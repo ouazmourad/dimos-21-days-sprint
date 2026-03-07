@@ -134,6 +134,7 @@ def show_config(ctx: typer.Context) -> None:
 
     cli_config_overrides: dict[str, Any] = ctx.obj
     global_config.update(**cli_config_overrides)
+    global_config.resolve_performance_tier(explicit_overrides=set(cli_config_overrides.keys()))
 
     for field_name, value in global_config.model_dump().items():
         typer.echo(f"{field_name}: {value}")

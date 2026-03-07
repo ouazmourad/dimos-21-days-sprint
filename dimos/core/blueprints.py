@@ -461,6 +461,11 @@ class Blueprint:
         if cli_config_overrides:
             global_config.update(**dict(cli_config_overrides))
 
+        explicit_fields = set(self.global_config_overrides.keys())
+        if cli_config_overrides:
+            explicit_fields |= set(cli_config_overrides.keys())
+        global_config.resolve_performance_tier(explicit_overrides=explicit_fields)
+
         self._check_requirements()
         self._verify_no_name_conflicts()
 
