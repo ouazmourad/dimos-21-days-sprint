@@ -97,20 +97,20 @@ class WebsocketVisModule(Module):
 
     def __init__(
         self,
-        port: int = 7779,
+        port: int | None = None,
         cfg: GlobalConfig = global_config,
         **kwargs: Any,
     ) -> None:
         """Initialize the WebSocket visualization module.
 
         Args:
-            port: Port to run the web server on
+            port: Port to run the web server on (defaults to cfg.websocket_port)
             cfg: Optional global config for viewer backend settings
         """
         super().__init__(**kwargs)
         self._global_config = cfg
 
-        self.port = port
+        self.port = port if port is not None else getattr(cfg, "websocket_port", 7779)
         self._uvicorn_server_thread: threading.Thread | None = None
         self.sio: socketio.AsyncServer | None = None
         self.app = None
@@ -231,8 +231,14 @@ class WebsocketVisModule(Module):
             if self._global_config.viewer_backend != "rerun-web":
                 return RedirectResponse(url="/command-center")
 
-            # Otherwise serve full dashboard with Rerun iframe
-            return FileResponse(_DASHBOARD_HTML, media_type="text/html")
+            # Otherwise serve full dashboard with Rerun iframe, injecting configured ports
+            rerun_port = getattr(self._global_config, "rerun_port", 9090) or 9090
+            grpc_port = rerun_port + 786  # 9090->9876, 9091->9877
+            html = _DASHBOARD_HTML.read_text()
+            html = html.replace("localhost:7779", f"localhost:{self.port}")
+            html = html.replace("localhost:9090", f"localhost:{rerun_port}")
+            html = html.replace("localhost:9876", f"localhost:{grpc_port}")
+            return Response(content=html, media_type="text/html")
 
         async def serve_command_center(request):  # type: ignore[no-untyped-def]
             """Serve the command center 2D visualization (built React app)."""

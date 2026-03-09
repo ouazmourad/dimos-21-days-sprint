@@ -69,6 +69,9 @@ class GlobalConfig(BaseSettings):
     robot_rotation_diameter: float = 0.6
     planner_strategy: NavigationStrategy = "simple"
     planner_robot_speed: float | None = None
+    instance_id: str = ""
+    websocket_port: int = 7779
+    rerun_port: int = 9090
     dask: bool = True
 
     model_config = SettingsConfigDict(
