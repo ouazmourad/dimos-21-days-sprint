@@ -1,0 +1,33 @@
+[Unit]
+Description=OpenClaw Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Update this path after installing OpenClaw via npm install -g openclaw
+ExecStart=/YOUR_HOME/.local/share/fnm/node-versions/v22.22.1/installation/bin/node \
+  /YOUR_HOME/.local/share/fnm/node-versions/v22.22.1/installation/lib/node_modules/openclaw/dist/index.js \
+  gateway --port 18789
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+TimeoutStartSec=30
+SuccessExitStatus=0 143
+KillMode=control-group
+Environment=HOME=/YOUR_HOME
+Environment=TMPDIR=/tmp
+# Update PATH to include your DimOS venv and fnm node
+Environment=PATH=/YOUR_HOME/path/to/dimos/.venv/bin:/YOUR_HOME/.local/share/fnm/current/bin:/usr/local/bin:/usr/bin:/bin
+Environment=OPENCLAW_GATEWAY_PORT=18789
+Environment=OPENCLAW_SYSTEMD_UNIT=openclaw-gateway.service
+Environment="OPENCLAW_WINDOWS_TASK_NAME=OpenClaw Gateway"
+Environment=OPENCLAW_SERVICE_MARKER=openclaw
+Environment=OPENCLAW_SERVICE_KIND=gateway
+Environment=OPENCLAW_SERVICE_VERSION=2026.3.8
+# Secrets — fill these in, never commit the real values
+Environment=ANTHROPIC_API_KEY=YOUR_ANTHROPIC_API_KEY
+Environment=DIMOS_MODE=simulation
+Environment=PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+
+[Install]
+WantedBy=default.target

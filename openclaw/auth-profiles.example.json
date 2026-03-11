@@ -1,0 +1,7 @@
+{
+  "anthropic:default": {
+    "provider": "anthropic",
+    "mode": "token",
+    "token": "YOUR_ANTHROPIC_API_KEY"
+  }
+}
