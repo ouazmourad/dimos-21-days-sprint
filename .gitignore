@@ -76,3 +76,11 @@ openclaw/auth-profiles.json
 openclaw/logs/
 openclaw/.openclaw/
 openclaw/workspace-robo/logs/
+
+/.mcp.json
+*.speedscope.json
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*

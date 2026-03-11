@@ -18,8 +18,9 @@ from typing import Literal, TypeAlias
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from dimos.mapping.occupancy.path_map import NavigationStrategy
+from dimos.models.vl.create import VlModelName
 
-ViewerBackend: TypeAlias = Literal["rerun", "rerun-web", "foxglove", "none"]
+ViewerBackend: TypeAlias = Literal["rerun", "rerun-web", "rerun-connect", "foxglove", "none"]
 PerformanceTier: TypeAlias = Literal["low", "medium", "high"]
 
 # Tier preset values: setting -> {tier -> value}
@@ -43,10 +44,14 @@ def _get_all_numbers(s: str) -> list[float]:
 
 class GlobalConfig(BaseSettings):
     robot_ip: str | None = None
+    robot_ips: str | None = None
     simulation: bool = False
     replay: bool = False
-    viewer_backend: ViewerBackend = "rerun-web"
+    replay_dir: str = "go2_sf_office"
+    new_memory: bool = False
+    viewer: ViewerBackend = "rerun"
     performance_tier: PerformanceTier = "high"
+    n_workers: int = 2
     n_dask_workers: int = 6
     memory_limit: str = "auto"
     mujoco_camera_position: str | None = None
@@ -69,7 +74,11 @@ class GlobalConfig(BaseSettings):
     robot_rotation_diameter: float = 0.6
     planner_strategy: NavigationStrategy = "simple"
     planner_robot_speed: float | None = None
-    dask: bool = True
+    mcp_port: int = 9990
+    mcp_host: str = "0.0.0.0"
+    dtop: bool = False
+    obstacle_avoidance: bool = True
+    detection_model: VlModelName = "moondream"
 
     model_config = SettingsConfigDict(
         env_file=".env",

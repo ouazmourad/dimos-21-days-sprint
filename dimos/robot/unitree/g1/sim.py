@@ -20,8 +20,9 @@ from typing import TYPE_CHECKING, Any
 
 from reactivex.disposable import Disposable
 
-from dimos.core import In, Module, Out, rpc
+from dimos.core.core import rpc
 from dimos.core.global_config import GlobalConfig, global_config
+from dimos.core.stream import In, Out
 from dimos.msgs.geometry_msgs import (
     PoseStamped,
     Quaternion,
@@ -30,6 +31,7 @@ from dimos.msgs.geometry_msgs import (
     Vector3,
 )
 from dimos.msgs.sensor_msgs import CameraInfo, Image, PointCloud2
+from dimos.robot.unitree.g1.connection import G1ConnectionBase
 from dimos.robot.unitree.type.odometry import Odometry as SimOdometry
 from dimos.utils.logging_config import setup_logger
 
@@ -58,7 +60,7 @@ def _camera_info_static() -> CameraInfo:
     )
 
 
-class G1SimConnection(Module):
+class G1SimConnection(G1ConnectionBase):
     cmd_vel: In[Twist]
     lidar: Out[PointCloud2]
     odom: Out[PoseStamped]

@@ -13,21 +13,55 @@
 # limitations under the License.
 
 
-from typing import Any
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Any
 
 from reactivex.disposable import Disposable
 
 from dimos import spec
-from dimos.core import DimosCluster, In, Module, rpc
+from dimos.core.core import rpc
 from dimos.core.global_config import GlobalConfig, global_config
+from dimos.core.module import Module
+from dimos.core.module_coordinator import ModuleCoordinator
+from dimos.core.stream import In
 from dimos.msgs.geometry_msgs import Twist
 from dimos.robot.unitree.connection import UnitreeWebRTCConnection
 from dimos.utils.logging_config import setup_logger
 
+if TYPE_CHECKING:
+    from dimos.core.rpc_client import ModuleProxy
+
 logger = setup_logger()
 
 
-class G1Connection(Module):
+class G1ConnectionBase(Module, ABC):
+    """Abstract base for G1 connections (real hardware and simulation).
+
+    Modules that depend on G1 connection RPC methods should reference this
+    base class so the blueprint wiring works regardless of which concrete
+    connection is deployed.
+    """
+
+    @rpc
+    @abstractmethod
+    def start(self) -> None:
+        super().start()
+
+    @rpc
+    @abstractmethod
+    def stop(self) -> None:
+        super().stop()
+
+    @rpc
+    @abstractmethod
+    def move(self, twist: Twist, duration: float = 0.0) -> None: ...
+
+    @rpc
+    @abstractmethod
+    def publish_request(self, topic: str, data: dict[str, Any]) -> dict[Any, Any]: ...
+
+
+class G1Connection(G1ConnectionBase):
     cmd_vel: In[Twist]
     ip: str | None
     connection_type: str | None = None
@@ -92,11 +126,11 @@ class G1Connection(Module):
 g1_connection = G1Connection.blueprint
 
 
-def deploy(dimos: DimosCluster, ip: str, local_planner: spec.LocalPlanner) -> G1Connection:
+def deploy(dimos: ModuleCoordinator, ip: str, local_planner: spec.LocalPlanner) -> "ModuleProxy":
     connection = dimos.deploy(G1Connection, ip)  # type: ignore[attr-defined]
     connection.cmd_vel.connect(local_planner.cmd_vel)
     connection.start()
-    return connection  # type: ignore[no-any-return]
+    return connection
 
 
-__all__ = ["G1Connection", "deploy", "g1_connection"]
+__all__ = ["G1Connection", "G1ConnectionBase", "deploy", "g1_connection"]

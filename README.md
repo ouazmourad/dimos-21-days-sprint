@@ -107,7 +107,7 @@ Dimensional is agent native -- "vibecode" your robots in natural language and bu
       🟥 <a href="dimos/robot/unitree/b1">Unitree B1</a><br>
     </td>
     <td align="center" width="20%">
-      🟨 <a href="docs/todo.md">Unitree G1</a><br>
+      🟨 <a href="docs/platforms/humanoid/g1/index.md">Unitree G1</a><br>
     </td>
     <td align="center" width="20%">
       🟥 <a href="docs/todo.md">Xarm</a><br>
@@ -128,9 +128,44 @@ Dimensional is agent native -- "vibecode" your robots in natural language and bu
 
 </div>
 
+
+# System Requirements
+
+## Tested and Supported Hardware
+
+DimOS has been tested and validated on the following hardware configurations:
+
+### GPU
+- **NVIDIA RTX 4070 or better** (for perception, VLMs, and AI features)
+- CUDA support required
+- Minimum 8GB VRAM recommended
+
+### CPU
+- **Intel Core i7 (recent generation) or better**
+- AMD Ryzen 7 or better
+- Multi-core recommended for distributed execution
+
+### Memory
+- **16GB RAM minimum**
+- 32GB+ recommended for larger models and multi-robot deployments
+
+### Storage
+- **50GB+ free disk space**
+- SSD strongly recommended for model loading and data logging
+
+> **Note:** DimOS may run on older hardware (e.g., NVIDIA 3000-series GPUs), but performance and stability are not guaranteed. If you encounter issues, please upgrade to the recommended specifications above.
+
 # Installation
 
-## System Install
+## Interactive Install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/dimensionalOS/dimos/dev/scripts/install.sh | bash
+```
+
+> See [`scripts/install.sh --help`](scripts/install.sh) for non-interactive and advanced options.
+
+## Manual System Install
 
 To set up your system dependencies, follow one of these guides:
 
@@ -177,7 +212,10 @@ See below a simple robot connection module that sends streams of continuous `cmd
 
 ```py
 import threading, time, numpy as np
-from dimos.core import In, Module, Out, rpc, autoconnect
+from dimos.core.blueprints import autoconnect
+from dimos.core.core import rpc
+from dimos.core.module import Module
+from dimos.core.stream import In, Out
 from dimos.msgs.geometry_msgs import Twist
 from dimos.msgs.sensor_msgs import Image, ImageFormat
 
@@ -222,7 +260,8 @@ Blueprints can be composed, remapped, and have transports overridden if `autocon
 
 A blueprint example that connects the image stream from a robot to an LLM Agent for reasoning and action execution.
 ```py
-from dimos.core import autoconnect, LCMTransport
+from dimos.core.blueprints import autoconnect
+from dimos.core.transport import LCMTransport
 from dimos.msgs.sensor_msgs import Image
 from dimos.robot.unitree.go2.connection import go2_connection
 from dimos.agents.agent import agent
@@ -265,6 +304,15 @@ uv sync --all-extras --no-extra dds
 # Run fast test suite
 uv run pytest dimos
 ```
+
+> **Headless / Server Ubuntu (EC2, Docker, WSL2, CI)**
+>
+> If you're running on a headless machine without a display server, you'll need OpenGL libraries that aren't installed by default:
+> ```sh
+> sudo apt-get install -y libgl1 libegl1
+> ```
+> Without these, Open3D and MuJoCo will fail with `OSError: libGL.so.1: cannot open shared object file`.
+> Nix users (`nix develop`) don't need this — the flake already provides `libGL`, `libGLU`, and `mesa`.
 
 ## Multi Language Support
 

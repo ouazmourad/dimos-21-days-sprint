@@ -19,7 +19,6 @@ from threading import Event, RLock, Thread
 from typing import TYPE_CHECKING, Any, Protocol
 import uuid
 
-from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
 from langchain_core.messages.base import BaseMessage
 from langchain_core.tools import StructuredTool
@@ -46,9 +45,8 @@ class AgentConfig(ModuleConfig):
     model_fixture: str | None = None
 
 
-class Agent(Module):
-    default_config: type[AgentConfig] = AgentConfig
-    config: AgentConfig
+class Agent(Module[AgentConfig]):
+    default_config = AgentConfig
     agent: Out[BaseMessage]
     human_input: In[str]
     agent_idle: Out[bool]
@@ -105,6 +103,9 @@ class Agent(Module):
             model = MockModel(json_path=self.config.model_fixture)
 
         with self._lock:
+            # Here to prevent unwanted imports in the file.
+            from langchain.agents import create_agent
+
             self._state_graph = create_agent(
                 model=model,
                 tools=_get_tools_from_modules(self, modules, self.rpc),
