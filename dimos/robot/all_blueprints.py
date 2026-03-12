@@ -82,6 +82,7 @@ all_blueprints = {
     "unitree-go2-fleet": "dimos.robot.unitree.go2.blueprints.basic.unitree_go2_fleet:unitree_go2_fleet",
     "unitree-go2-ros": "dimos.robot.unitree.go2.blueprints.smart.unitree_go2_ros:unitree_go2_ros",
     "unitree-go2-spatial": "dimos.robot.unitree.go2.blueprints.smart.unitree_go2_spatial:unitree_go2_spatial",
+    "unitree-go2-nightwatch": "dimos.robot.unitree.go2.blueprints.agentic.unitree_go2_nightwatch:unitree_go2_nightwatch",
     "unitree-go2-temporal-memory": "dimos.robot.unitree.go2.blueprints.agentic.unitree_go2_temporal_memory:unitree_go2_temporal_memory",
     "unitree-go2-vlm-stream-test": "dimos.robot.unitree.go2.blueprints.smart.unitree_go2_vlm_stream_test:unitree_go2_vlm_stream_test",
     "xarm-perception": "dimos.manipulation.manipulation_blueprints:xarm_perception",

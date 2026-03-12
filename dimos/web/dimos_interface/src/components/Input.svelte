@@ -68,9 +68,7 @@
 
         if (commandName !== 'clear') {
           if (output && typeof output === 'object' && 'type' in output && output.type === 'STREAM_START') {
-            // Add initial message to history
             $history = [...$history, { command, outputs: [output.initialMessage] }];
-            // Connect to text stream
             connectTextStream(output.streamKey);
           } else {
             $history = [...$history, { command, outputs: [output] }];
@@ -92,18 +90,46 @@
   }}
 />
 
-<div class="flex w-full">
-  <p class="visible md:hidden">❯</p>
-
+<div class="input-wrapper">
   <input
     id="command-input"
     name="command-input"
     aria-label="Command input"
-    class="w-full px-2 bg-transparent outline-none"
+    class="hud-input"
     type="text"
     style={`color: ${$theme.foreground}`}
     bind:value={command}
     on:keydown={handleKeyDown}
     bind:this={input}
+    placeholder="enter command..."
   />
 </div>
+
+<style>
+  .input-wrapper {
+    flex: 1;
+    width: 100%;
+  }
+
+  .hud-input {
+    width: 100%;
+    padding: 2px 8px;
+    background: transparent;
+    outline: none;
+    border: none;
+    border-bottom: 1px solid transparent;
+    caret-color: var(--hud-cyan);
+    transition: border-color 0.3s ease;
+    font-size: inherit;
+  }
+
+  .hud-input:focus {
+    border-bottom-color: rgba(0, 240, 255, 0.3);
+  }
+
+  .hud-input::placeholder {
+    color: rgba(0, 240, 255, 0.15);
+    font-style: italic;
+    letter-spacing: 1px;
+  }
+</style>

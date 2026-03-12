@@ -6,11 +6,10 @@
   let retryCount: Record<string, number> = {};
   let retryTimers: Record<string, number | null> = {};
   let timestamps: Record<string, number> = {};
-  const TOTAL_TIMEOUT = 120000; // 2 minutes
-  const RETRY_INTERVAL = 2000; // Retry every 2 seconds
+  const TOTAL_TIMEOUT = 120000;
+  const RETRY_INTERVAL = 2000;
   const MAX_RETRIES = Math.floor(TOTAL_TIMEOUT / RETRY_INTERVAL);
 
-  // Define initial state to reset the stream
   const initialState = {
     isVisible: false,
     url: null,
@@ -31,15 +30,14 @@
     if (retryCount[streamKey] < MAX_RETRIES) {
       retryCount[streamKey]++;
       const timeLeft = TOTAL_TIMEOUT - (retryCount[streamKey] * RETRY_INTERVAL);
-      errorMessages[streamKey] = `Connection attempt ${retryCount[streamKey]}/${MAX_RETRIES}... (${Math.ceil(timeLeft / 1000)}s remaining)`;
+      errorMessages[streamKey] = `RECONNECTING ${retryCount[streamKey]}/${MAX_RETRIES} [${Math.ceil(timeLeft / 1000)}s]`;
 
-      // Update timestamp to force a new connection attempt
       timestamps[streamKey] = Date.now();
 
       clearRetryTimer(streamKey);
       retryTimers[streamKey] = setTimeout(() => retryConnection(streamKey), RETRY_INTERVAL);
     } else {
-      errorMessages[streamKey] = 'Failed to connect to stream. Please check if the Robot() is running and sending data to RobotWebInterface.';
+      errorMessages[streamKey] = 'FEED OFFLINE — Check Robot() connection';
     }
   }
 
@@ -60,7 +58,6 @@
     streamStore.set(initialState);
   }
 
-  // Reset error state when stream URL changes
   $: if ($streamStore.url && $streamStore.streamKeys) {
     $streamStore.streamKeys.forEach(key => {
       errorMessages[key] = null;
@@ -74,123 +71,196 @@
     Object.keys(retryTimers).forEach(key => clearRetryTimer(key));
   });
 
-  // Compute current URLs with timestamps to prevent caching
   $: streamUrls = $streamStore.streamKeys.map(key => ({
     key,
     url: $streamStore.url ? `${$streamStore.url}/video_feed/${key}?t=${timestamps[key] || Date.now()}` : null
   }));
 
-  // Calculate grid layout based on number of streams
   $: gridCols = Math.ceil(Math.sqrt($streamStore.streamKeys.length));
   $: gridRows = Math.ceil($streamStore.streamKeys.length / gridCols);
 </script>
 
 <div class="stream-viewer" class:visible={$streamStore.isVisible}>
-  <div class="stream-container" style="--grid-cols: {gridCols}; --grid-rows: {gridRows};">
-    <div class="stream-title">Unitree Robot Feeds</div>
+  <div class="stream-panel" style="--grid-cols: {gridCols}; --grid-rows: {gridRows};">
+    <!-- HUD header -->
+    <div class="stream-header">
+      <span class="stream-header-dot"></span>
+      <span class="stream-header-title">LIVE FEED</span>
+      <button class="close-btn" on:click={stopStream}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
     {#if $streamStore.isVisible}
-      {#each streamUrls as {key, url}}
-        <div class="stream-cell">
-          {#if url}
-            <img
-              src={url}
-              alt={`Robot video stream ${key}`}
-              on:error={() => handleError(key)}
-              on:load={() => handleLoad(key)}
-            />
-          {/if}
-          {#if errorMessages[key]}
-            <div class="error-message">
-              {errorMessages[key]}
-            </div>
-          {/if}
-        </div>
-      {/each}
+      <div class="stream-grid">
+        {#each streamUrls as {key, url}}
+          <div class="stream-cell">
+            <!-- Corner accents -->
+            <div class="cell-corner tl"></div>
+            <div class="cell-corner tr"></div>
+            <div class="cell-corner bl"></div>
+            <div class="cell-corner br"></div>
+
+            {#if url}
+              <img
+                src={url}
+                alt={`Feed: ${key}`}
+                on:error={() => handleError(key)}
+                on:load={() => handleLoad(key)}
+              />
+            {/if}
+            <div class="cell-label">{key.toUpperCase()}</div>
+            {#if errorMessages[key]}
+              <div class="error-overlay">
+                <span class="error-text">{errorMessages[key]}</span>
+              </div>
+            {/if}
+          </div>
+        {/each}
+      </div>
     {/if}
-    <button class="close-btn" on:click={stopStream}>
-      Stop Streams
-    </button>
   </div>
 </div>
 
 <style>
   .stream-viewer {
     position: fixed;
-    top: 20px;
-    right: 20px;
+    top: 12px;
+    right: 12px;
     z-index: 1000;
     display: none;
-    background: rgba(0, 0, 0, 0.8);
-    padding: 10px;
-    border-radius: 8px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   }
 
   .visible {
     display: block;
   }
 
-  .stream-container {
-    position: relative;
-    width: calc(640px * var(--grid-cols));
-    max-width: 90vw;
+  .stream-panel {
+    background: rgba(10, 10, 15, 0.95);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    box-shadow:
+      0 0 20px rgba(0, 240, 255, 0.1),
+      inset 0 0 30px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(12px);
+    overflow: hidden;
+  }
+
+  .stream-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+    background: rgba(0, 240, 255, 0.04);
+  }
+
+  .stream-header-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ff2244;
+    box-shadow: 0 0 6px #ff2244;
+    animation: rec-blink 1s infinite;
+  }
+
+  @keyframes rec-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .stream-header-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: rgba(0, 240, 255, 0.6);
+    flex: 1;
+  }
+
+  .close-btn {
+    background: none;
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    color: rgba(0, 240, 255, 0.5);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+
+  .close-btn:hover {
+    border-color: var(--hud-red);
+    color: var(--hud-red);
+    background: rgba(255, 34, 68, 0.1);
+  }
+
+  .stream-grid {
     display: grid;
     grid-template-columns: repeat(var(--grid-cols), 1fr);
-    gap: 10px;
-    padding: 10px;
+    gap: 4px;
+    padding: 8px;
+    max-width: 85vw;
   }
 
   .stream-cell {
     position: relative;
-    width: 100%;
     aspect-ratio: 4/3;
     display: flex;
     align-items: center;
     justify-content: center;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid rgba(0, 240, 255, 0.08);
+    min-width: 280px;
+    overflow: hidden;
   }
 
-  img {
+  .stream-cell img {
     width: 100%;
     height: 100%;
     object-fit: contain;
   }
 
-  .error-message {
+  /* Corner accents on each cell */
+  .cell-corner {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: rgba(0, 0, 0, 0.8);
-    color: #ff4444;
-    padding: 10px;
-    border-radius: 4px;
-    text-align: center;
-    font-size: 14px;
-    max-width: 90%;
+    width: 10px;
+    height: 10px;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .cell-corner.tl { top: 0; left: 0; border-top: 1px solid var(--hud-cyan); border-left: 1px solid var(--hud-cyan); }
+  .cell-corner.tr { top: 0; right: 0; border-top: 1px solid var(--hud-cyan); border-right: 1px solid var(--hud-cyan); }
+  .cell-corner.bl { bottom: 0; left: 0; border-bottom: 1px solid var(--hud-cyan); border-left: 1px solid var(--hud-cyan); }
+  .cell-corner.br { bottom: 0; right: 0; border-bottom: 1px solid var(--hud-cyan); border-right: 1px solid var(--hud-cyan); }
+
+  .cell-label {
+    position: absolute;
+    bottom: 4px;
+    left: 6px;
+    font-family: 'Orbitron', monospace;
+    font-size: 8px;
+    letter-spacing: 2px;
+    color: rgba(0, 240, 255, 0.4);
+    z-index: 3;
   }
 
-  .stream-title {
+  .error-overlay {
     position: absolute;
-    top: -30px;
-    left: 0;
-    color: white;
-    font-size: 16px;
-    font-weight: bold;
-  }
-
-  .close-btn {
-    position: absolute;
-    top: -8px;
-    right: -8px;
-    padding: 4px 8px;
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.9);
-    border: none;
-    color: #000;
-    font-size: 14px;
-    cursor: pointer;
+    inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
+    background: rgba(0, 0, 0, 0.8);
+  }
+
+  .error-text {
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--hud-red);
+    text-align: center;
+    padding: 12px;
   }
 </style>

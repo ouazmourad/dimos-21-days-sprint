@@ -17,9 +17,11 @@ from typing import TYPE_CHECKING
 
 import reactivex as rx
 import reactivex.operators as ops
+from langchain_core.messages.base import BaseMessage
 
 from dimos.core.core import rpc
 from dimos.core.module import Module
+from dimos.core.stream import In
 from dimos.core.transport import pLCMTransport
 from dimos.stream.audio.node_normalizer import AudioNormalizer
 from dimos.utils.logging_config import setup_logger
@@ -32,9 +34,12 @@ logger = setup_logger()
 
 
 class WebInput(Module):
+    agent: In[BaseMessage]
+
     _web_interface: RobotWebInterface | None = None
     _thread: Thread | None = None
     _human_transport: pLCMTransport[str] | None = None
+    _response_subject: rx.subject.Subject | None = None
 
     @rpc
     def start(self) -> None:
@@ -43,10 +48,11 @@ class WebInput(Module):
         self._human_transport = pLCMTransport("/human_input")
 
         audio_subject: rx.subject.Subject[AudioEvent] = rx.subject.Subject()
+        self._response_subject = rx.subject.Subject()
 
         self._web_interface = RobotWebInterface(
             port=5555,
-            text_streams={"agent_responses": rx.subject.Subject()},
+            text_streams={"agent_responses": self._response_subject},
             audio_subject=audio_subject,
         )
 
@@ -68,6 +74,18 @@ class WebInput(Module):
 
         # 2. Transcribed text from STT
         unsub = stt_node.emit_text().subscribe(self._human_transport.publish)
+        self._disposables.add(unsub)
+
+        # 3. Subscribe to agent output and forward to web UI
+        def _forward_agent_msg(msg: BaseMessage) -> None:
+            """Extract text content from agent messages and push to web UI."""
+            if self._response_subject is None:
+                return
+            content = getattr(msg, "content", None)
+            if content and isinstance(content, str) and content.strip():
+                self._response_subject.on_next(content)
+
+        unsub = self.agent.subscribe(_forward_agent_msg)
         self._disposables.add(unsub)
 
         self._thread = Thread(target=self._web_interface.run, daemon=True)

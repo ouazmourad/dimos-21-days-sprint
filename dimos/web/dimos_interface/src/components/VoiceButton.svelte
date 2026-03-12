@@ -21,9 +21,7 @@
 
   const dispatch = createEventDispatcher();
 
-  // Get the server URL dynamically based on current location
   const getServerUrl = () => {
-    // In production, use the same host as the frontend but on port 5555
     const hostname = window.location.hostname;
     return `http://${hostname}:5555`;
   };
@@ -35,11 +33,9 @@
 
   async function toggleRecording() {
     if (isRecording && mediaRecorder) {
-      // Stop recording
       mediaRecorder.stop();
       isRecording = false;
     } else {
-      // Start recording
       try {
         if (!mediaRecorder) {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -52,7 +48,6 @@
             const blob = new Blob(chunks, { type: 'audio/webm' });
             chunks = [];
 
-            // Upload to backend
             const formData = new FormData();
             formData.append('file', blob, 'recording.webm');
 
@@ -65,7 +60,6 @@
               const json = await res.json();
 
               if (json.success) {
-                // Connect to agent_responses stream to see the output
                 connectTextStream('agent_responses');
                 dispatch('voiceCommand', { success: true });
               } else {
@@ -96,9 +90,7 @@
     }
   }
 
-  // Keyboard shortcut support
   function handleKeyPress(event: KeyboardEvent) {
-    // Ctrl+M or Cmd+M to toggle recording
     if ((event.ctrlKey || event.metaKey) && event.key === 'm') {
       event.preventDefault();
       toggleRecording();
@@ -108,155 +100,214 @@
 
 <svelte:window on:keydown={handleKeyPress} />
 
-<button
-  class="voice-button-fab"
-  class:recording={isRecording}
-  class:processing={isProcessing}
-  on:click={toggleRecording}
-  disabled={isProcessing}
-  style="--theme-color: {$theme.primary}"
-  title={isRecording ? 'Stop recording (Ctrl+M)' : 'Start voice command (Ctrl+M)'}
->
-  {#if isProcessing}
-    <span class="processing-icon">⟳</span>
-  {:else if isRecording}
-    <span class="mic-icon recording">◉</span>
-  {:else}
-    <span class="mic-icon">🎤</span>
-  {/if}
-</button>
+<div class="voice-container">
+  <!-- Outer ring -->
+  <div class="voice-ring" class:active={isRecording}></div>
+  <!-- Middle ring -->
+  <div class="voice-ring-inner" class:active={isRecording}></div>
+
+  <button
+    class="voice-btn"
+    class:recording={isRecording}
+    class:processing={isProcessing}
+    on:click={toggleRecording}
+    disabled={isProcessing}
+    title={isRecording ? 'Stop recording (Ctrl+M)' : 'Start voice command (Ctrl+M)'}
+  >
+    {#if isProcessing}
+      <svg class="icon spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+      </svg>
+    {:else if isRecording}
+      <svg class="icon" viewBox="0 0 24 24" fill="currentColor">
+        <rect x="6" y="6" width="12" height="12" rx="2"/>
+      </svg>
+    {:else}
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="9" y="2" width="6" height="12" rx="3"/>
+        <path d="M5 10a7 7 0 0 0 14 0" stroke-linecap="round"/>
+        <line x1="12" y1="17" x2="12" y2="22" stroke-linecap="round"/>
+        <line x1="8" y1="22" x2="16" y2="22" stroke-linecap="round"/>
+      </svg>
+    {/if}
+  </button>
+
+  <span class="voice-label" class:recording={isRecording}>
+    {isProcessing ? 'PROCESSING' : isRecording ? 'RECORDING' : 'VOICE'}
+  </span>
+</div>
 
 <style>
-  .voice-button-fab {
+  .voice-container {
     position: fixed;
-    bottom: 30px;
-    right: 30px;
-    width: 120px; /* Increased from 60px to 2x */
-    height: 120px; /* Increased from 60px to 2x */
+    bottom: 28px;
+    right: 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    z-index: 1000;
+  }
+
+  /* Outer ring */
+  .voice-ring {
+    position: absolute;
+    width: 80px;
+    height: 80px;
     border-radius: 50%;
-    background: #000;
-    border: 2px solid var(--theme-color);
-    color: var(--theme-color);
+    border: 1px solid rgba(0, 240, 255, 0.15);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, calc(-50% - 10px));
+    transition: all 0.4s ease;
+    pointer-events: none;
+  }
+
+  .voice-ring.active {
+    width: 100px;
+    height: 100px;
+    border-color: var(--hud-red);
+    animation: ring-pulse 1.5s infinite;
+  }
+
+  /* Inner ring */
+  .voice-ring-inner {
+    position: absolute;
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    border: 1px dashed rgba(0, 240, 255, 0.1);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, calc(-50% - 10px));
+    transition: all 0.4s ease;
+    pointer-events: none;
+    animation: slow-spin 20s linear infinite;
+  }
+
+  .voice-ring-inner.active {
+    border-color: rgba(255, 34, 68, 0.4);
+    animation: slow-spin 4s linear infinite;
+  }
+
+  .voice-btn {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: rgba(0, 240, 255, 0.06);
+    border: 2px solid rgba(0, 240, 255, 0.4);
+    color: var(--hud-cyan);
     cursor: pointer;
-    font-size: 48px; /* Increased from 24px to 2x */
     display: flex;
     align-items: center;
     justify-content: center;
     transition: all 0.3s ease;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-    z-index: 1000;
+    box-shadow:
+      0 0 15px rgba(0, 240, 255, 0.1),
+      inset 0 0 15px rgba(0, 240, 255, 0.05);
+    backdrop-filter: blur(8px);
   }
 
-  .voice-button-fab:hover:not(:disabled) {
-    background: var(--theme-color);
-    color: #000;
-    box-shadow: 0 6px 20px var(--theme-color);
-    transform: scale(1.1);
+  .voice-btn:hover:not(:disabled) {
+    background: rgba(0, 240, 255, 0.15);
+    border-color: var(--hud-cyan);
+    box-shadow:
+      0 0 25px rgba(0, 240, 255, 0.3),
+      inset 0 0 20px rgba(0, 240, 255, 0.1);
+    transform: scale(1.08);
   }
 
-  .voice-button-fab:active:not(:disabled) {
+  .voice-btn:active:not(:disabled) {
     transform: scale(0.95);
   }
 
-  .voice-button-fab:disabled {
+  .voice-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
 
-  .voice-button-fab.recording {
-    animation: pulse 1.5s infinite;
-    border-color: #ff0000;
-    color: #ff0000;
-    background: rgba(255, 0, 0, 0.1);
+  .voice-btn.recording {
+    border-color: var(--hud-red);
+    color: var(--hud-red);
+    background: rgba(255, 34, 68, 0.1);
+    box-shadow:
+      0 0 20px rgba(255, 34, 68, 0.3),
+      inset 0 0 15px rgba(255, 34, 68, 0.1);
+    animation: btn-pulse 1.5s infinite;
   }
 
-  .voice-button-fab.recording:hover {
-    background: #ff0000;
-    color: #000;
+  .voice-btn.recording:hover {
+    background: rgba(255, 34, 68, 0.25);
+    box-shadow: 0 0 30px rgba(255, 34, 68, 0.5);
   }
 
-  .voice-button-fab.processing {
+  .voice-btn.processing {
     border-style: dashed;
+    border-color: var(--hud-amber);
+    color: var(--hud-amber);
   }
 
-  .mic-icon {
-    display: inline-block;
-    transition: transform 0.2s ease;
-    font-size: 56px; /* Increased from 28px to 2x */
+  .icon {
+    width: 22px;
+    height: 22px;
   }
 
-  .mic-icon.recording {
-    color: #ff0000;
+  .spin {
+    animation: spinner 0.8s linear infinite;
+  }
+
+  .voice-label {
+    font-family: 'Orbitron', monospace;
+    font-size: 8px;
+    letter-spacing: 3px;
+    color: rgba(0, 240, 255, 0.4);
+    text-transform: uppercase;
+  }
+
+  .voice-label.recording {
+    color: var(--hud-red);
     animation: blink 1s infinite;
   }
 
-  .processing-icon {
-    display: inline-block;
-    animation: spin 1s linear infinite;
-    font-size: 56px; /* Increased from 28px to 2x */
-  }
-
-  @keyframes pulse {
-    0% {
-      transform: scale(1);
-      box-shadow: 0 4px 12px rgba(255, 0, 0, 0.4);
+  @keyframes ring-pulse {
+    0%, 100% {
+      transform: translate(-50%, calc(-50% - 10px)) scale(1);
+      opacity: 0.6;
     }
     50% {
-      transform: scale(1.05);
-      box-shadow: 0 4px 20px rgba(255, 0, 0, 0.6);
-    }
-    100% {
-      transform: scale(1);
-      box-shadow: 0 4px 12px rgba(255, 0, 0, 0.4);
+      transform: translate(-50%, calc(-50% - 10px)) scale(1.1);
+      opacity: 1;
     }
   }
 
-  @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+  @keyframes slow-spin {
+    from { transform: translate(-50%, calc(-50% - 10px)) rotate(0deg); }
+    to { transform: translate(-50%, calc(-50% - 10px)) rotate(360deg); }
   }
 
-  @keyframes spin {
+  @keyframes btn-pulse {
+    0%, 100% { box-shadow: 0 0 15px rgba(255, 34, 68, 0.2); }
+    50% { box-shadow: 0 0 30px rgba(255, 34, 68, 0.5); }
+  }
+
+  @keyframes spinner {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
   }
 
-  /* Terminal-style glow effect */
-  .voice-button-fab.recording::after {
-    content: '';
-    position: absolute;
-    top: -8px;
-    left: -8px;
-    right: -8px;
-    bottom: -8px;
-    border: 2px solid rgba(255, 0, 0, 0.5);
-    border-radius: 50%;
-    animation: ripple 1.5s infinite;
-    pointer-events: none;
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
   }
 
-  @keyframes ripple {
-    0% {
-      transform: scale(1);
-      opacity: 0.8;
-    }
-    100% {
-      transform: scale(1.3);
-      opacity: 0;
-    }
-  }
-
-  /* Mobile responsive - slightly smaller on mobile */
   @media (max-width: 640px) {
-    .voice-button-fab {
-      width: 100px; /* Increased from 50px to 2x */
-      height: 100px; /* Increased from 50px to 2x */
-      bottom: 20px;
-      right: 20px;
+    .voice-btn {
+      width: 48px;
+      height: 48px;
     }
-
-    .mic-icon, .processing-icon {
-      font-size: 44px; /* Increased from 22px to 2x */
-    }
+    .voice-ring { width: 68px; height: 68px; }
+    .voice-ring-inner { width: 60px; height: 60px; }
+    .voice-container { bottom: 16px; right: 16px; }
+    .icon { width: 18px; height: 18px; }
   }
 </style>

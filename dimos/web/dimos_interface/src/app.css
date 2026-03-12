@@ -14,32 +14,95 @@
  * limitations under the License.
  */
 
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-* {
-  font-family: monospace;
+:root {
+  --hud-cyan: #00f0ff;
+  --hud-blue: #0066ff;
+  --hud-magenta: #ff00ff;
+  --hud-amber: #ffaa00;
+  --hud-red: #ff2244;
+  --hud-bg: #0a0a0f;
+  --hud-surface: #0d1117;
+  --hud-border: rgba(0, 240, 255, 0.15);
+  --hud-glow: 0 0 10px rgba(0, 240, 255, 0.3), 0 0 20px rgba(0, 240, 255, 0.1);
 }
 
 * {
+  font-family: 'Share Tech Mono', monospace;
+}
+
+body {
+  background: var(--hud-bg);
+  overflow: hidden;
+}
+
+/* Subtle grid background */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Scanline overlay */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* Futuristic scrollbar */
+* {
   scrollbar-width: thin;
-  scrollbar-color: #888 #f1f1f1;
+  scrollbar-color: var(--hud-cyan) transparent;
 }
 
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #888;
+  background: var(--hud-cyan);
+  border-radius: 2px;
+  box-shadow: 0 0 6px var(--hud-cyan);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: var(--hud-magenta);
+  box-shadow: 0 0 10px var(--hud-magenta);
+}
+
+/* Selection style */
+::selection {
+  background: rgba(0, 240, 255, 0.25);
+  color: #fff;
+}
+
+/* Glow text utility */
+.glow-text {
+  text-shadow: 0 0 8px currentColor, 0 0 16px currentColor;
 }
