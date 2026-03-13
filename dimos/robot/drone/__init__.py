@@ -24,5 +24,6 @@ __getattr__, __dir__, __all__ = lazy.attach(
         "drone": ["Drone"],
         "drone_keyboard_teleop": ["DroneKeyboardTeleop"],
         "mavlink_connection": ["MavlinkConnection"],
+        "mujoco_drone": ["MuJocoDroneModule"],
     },
 )

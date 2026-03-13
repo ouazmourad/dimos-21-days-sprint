@@ -156,7 +156,9 @@ def _get_tools_from_modules(
     agent: Agent, modules: list[RPCClient], rpc: RPCSpec
 ) -> list[StructuredTool]:
     skills = [skill for module in modules for skill in (module.get_skills() or [])]
-    return [_skill_to_tool(agent, skill, rpc) for skill in skills]
+    tools = [_skill_to_tool(agent, skill, rpc) for skill in skills]
+    print(f"[Agent] Registered {len(tools)} tools: {[t.name for t in tools]}")
+    return tools
 
 
 def _skill_to_tool(agent: Agent, skill: SkillInfo, rpc: RPCSpec) -> StructuredTool:
