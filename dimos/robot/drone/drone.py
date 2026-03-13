@@ -39,6 +39,7 @@ from dimos.msgs.sensor_msgs import Image
 from dimos.protocol import pubsub
 from dimos.robot.drone.camera_module import DroneCameraModule
 from dimos.robot.drone.connection_module import DroneConnectionModule
+from dimos.robot.drone.drone_keyboard_teleop import DroneKeyboardTeleop
 from dimos.robot.drone.drone_tracking_module import DroneTrackingModule
 from dimos.robot.foxglove_bridge import FoxgloveBridge
 
@@ -271,16 +272,19 @@ class Drone(Robot):
         result: dict[str, Any] = self.connection.get_status()
         return result
 
-    def move(self, vector: Vector3, duration: float = 0.0) -> None:
-        """Send movement command.
+    def move(self, x: float = 0.0, y: float = 0.0, z: float = 0.0, duration: float = 0.0) -> str:
+        """Send velocity movement command.
 
         Args:
-            vector: Velocity vector [x, y, z] in m/s
+            x: Forward/backward velocity in m/s
+            y: Left/right velocity in m/s
+            z: Up/down velocity in m/s
             duration: How long to move (0 = continuous)
         """
         if self.connection is None:
-            return
-        self.connection.move(vector, duration)
+            return "Failed: No connection"
+        result: str = self.connection.move(x, y, z, duration)
+        return result
 
     def takeoff(self, altitude: float = 3.0) -> bool:
         """Takeoff to altitude.
@@ -377,12 +381,23 @@ class Drone(Robot):
 
 
 DRONE_SYSTEM_PROMPT = """\
-You are controlling a DJI drone with MAVLink interface.
-You have access to drone control skills you are already flying so only run move_twist, set_mode, and fly_to.
-When the user gives commands, use the appropriate skills to control the drone.
-Always confirm actions and report results. Send fly_to commands only at above 200 meters altitude to be safe.
-Here are some GPS locations to remember
-6th and Natoma intersection: 37.78019978319006, -122.40770815020853,
+You are controlling a drone with MAVLink interface via ArduPilot SITL simulation.
+You have access to these drone control skills:
+- move(x, y, z, duration): Move with velocity (m/s). x=forward, y=left, z=up.
+- move_with_yaw(vx, vy, vz, yaw_rate, duration): Move with velocity AND yaw rotation. yaw_rate in rad/s (positive=right, negative=left). Use 1.57 rad/s for ~90 deg/s.
+- takeoff(altitude): Takeoff to altitude in meters.
+- land(): Land the drone.
+- arm(): Arm motors.
+- disarm(): Disarm motors.
+- set_mode(mode): Set flight mode (GUIDED, LAND, RTL, STABILIZE, etc.)
+- fly_to(lat, lon, alt): Fly to GPS coordinates.
+
+IMPORTANT: The drone is already armed and hovering. Use move_with_yaw for turning/rotating.
+For "turn right 90 degrees": use move_with_yaw(yaw_rate=1.57, duration=1.0)
+For "turn left 90 degrees": use move_with_yaw(yaw_rate=-1.57, duration=1.0)
+
+GPS locations to remember:
+6th and Natoma intersection: 37.78019978319006, -122.40770815020853
 454 Natoma (Office): 37.780967465525244, -122.40688342010769
 5th and mission intersection: 37.782598539339695, -122.40649441875473
 6th and mission intersection: 37.781007204789354, -122.40868447123661"""
@@ -395,11 +410,12 @@ def drone_agentic(
     camera_intrinsics: list[float] | None = None,
     system_prompt: str = DRONE_SYSTEM_PROMPT,
     model: str = "gpt-4o",
+    keyboard_teleop: bool = False,
 ) -> Blueprint:
     if camera_intrinsics is None:
         camera_intrinsics = [1000.0, 1000.0, 960.0, 540.0]
 
-    return autoconnect(
+    modules = [
         DroneConnectionModule.blueprint(
             connection_string=connection_string,
             video_port=video_port,
@@ -409,16 +425,27 @@ def drone_agentic(
         DroneTrackingModule.blueprint(outdoor=outdoor),
         WebsocketVisModule.blueprint(),
         FoxgloveBridge.blueprint(),
-        GoogleMapsSkillContainer.blueprint(),
         OsmSkill.blueprint(),
         agent(system_prompt=system_prompt, model=model),
         web_input(),
-    ).remappings(
-        [
-            (DroneTrackingModule, "video_input", "video"),
-            (DroneTrackingModule, "cmd_vel", "movecmd_twist"),
-        ]
-    )
+    ]
+
+    # Google Maps is optional — skip if API key is missing
+    if os.getenv("GOOGLE_MAPS_API_KEY"):
+        modules.append(GoogleMapsSkillContainer.blueprint())
+
+    if keyboard_teleop:
+        modules.append(DroneKeyboardTeleop.blueprint())
+
+    remaps = [
+        (DroneTrackingModule, "video_input", "video"),
+        (DroneTrackingModule, "cmd_vel", "movecmd_twist"),
+    ]
+
+    if keyboard_teleop:
+        remaps.append((DroneKeyboardTeleop, "cmd_vel", "movecmd_twist"))
+
+    return autoconnect(*modules).remappings(remaps)
 
 
 def main() -> None:
@@ -427,11 +454,15 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="DimOS Drone System")
     parser.add_argument("--replay", action="store_true", help="Use recorded data for testing")
-
     parser.add_argument(
         "--outdoor",
         action="store_true",
         help="Outdoor mode - use GPS only, no velocity integration",
+    )
+    parser.add_argument(
+        "--keyboard",
+        action="store_true",
+        help="Enable keyboard teleop (Pygame window for WASD + altitude control)",
     )
     args = parser.parse_args()
 
@@ -465,6 +496,7 @@ def main() -> None:
         connection_string=connection,
         video_port=video_port,
         outdoor=args.outdoor,
+        keyboard_teleop=args.keyboard,
     )
 
     blueprint.build().loop()

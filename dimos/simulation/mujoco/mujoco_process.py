@@ -64,6 +64,72 @@ class MockController:
         pass
 
 
+class DroneCamera:
+    """Drone-style camera that tracks the robot with keyboard orbit controls.
+
+    Controls (press in the MuJoCo viewer window):
+        F           Toggle follow / free mode
+        Arrow keys  Orbit camera (azimuth / elevation)
+        +  /  -     Zoom in / out
+        PgUp / PgDn Raise / lower altitude offset
+        R           Reset camera to defaults
+    """
+
+    def __init__(
+        self,
+        cam: Any,
+        default_distance: float,
+        default_azimuth: float,
+        default_elevation: float,
+    ) -> None:
+        self._cam = cam
+        self._follow = True
+        self._alt_offset = 0.0
+        self._defaults = (default_distance, default_azimuth, default_elevation)
+
+    @property
+    def follow(self) -> bool:
+        return self._follow
+
+    def handle_key(self, keycode: int) -> None:
+        """GLFW key callback — called from viewer thread."""
+        if keycode == 70:  # F
+            self._follow = not self._follow
+            logger.info("[DroneCamera] %s mode", "FOLLOW" if self._follow else "FREE")
+        elif keycode == 82:  # R
+            self._follow = True
+            self._alt_offset = 0.0
+            self._cam.distance, self._cam.azimuth, self._cam.elevation = self._defaults
+            logger.info("[DroneCamera] Reset")
+        elif keycode == 263:  # Left arrow
+            self._cam.azimuth -= 5.0
+        elif keycode == 262:  # Right arrow
+            self._cam.azimuth += 5.0
+        elif keycode == 265:  # Up arrow
+            self._cam.elevation = max(-89.0, self._cam.elevation - 3.0)
+        elif keycode == 264:  # Down arrow
+            self._cam.elevation = min(-1.0, self._cam.elevation + 3.0)
+        elif keycode == 61:  # = (+)
+            self._cam.distance = max(1.0, self._cam.distance - 0.5)
+        elif keycode == 45:  # -
+            self._cam.distance += 0.5
+        elif keycode == 266:  # PgUp
+            self._alt_offset += 0.2
+        elif keycode == 267:  # PgDn
+            self._alt_offset = max(0.0, self._alt_offset - 0.2)
+
+    def update(self, robot_pos: NDArray[Any]) -> None:
+        """Track robot position in follow mode. Call each frame."""
+        if self._follow:
+            self._cam.lookat[0] = robot_pos[0]
+            self._cam.lookat[1] = robot_pos[1]
+            self._cam.lookat[2] = robot_pos[2] + self._alt_offset
+
+    def status_text(self) -> str:
+        mode = "FOLLOW" if self._follow else "FREE"
+        return f"Cam:{mode} | F:toggle R:reset Arrows:orbit +/-:zoom PgUp/Dn:alt"
+
+
 def _run_simulation(config: GlobalConfig, shm: ShmReader) -> None:
     robot_name = config.robot_model or "unitree_go1"
     if robot_name == "unitree_go2":
@@ -111,7 +177,15 @@ def _run_simulation(config: GlobalConfig, shm: ShmReader) -> None:
     shm.set_resolution(width, height)
     shm.signal_ready()
 
-    with viewer.launch_passive(model, data, show_left_ui=False, show_right_ui=False) as m_viewer:
+    drone_camera: DroneCamera | None = None
+
+    def _key_callback(keycode: int) -> None:
+        if drone_camera is not None:
+            drone_camera.handle_key(keycode)
+
+    with viewer.launch_passive(
+        model, data, show_left_ui=False, show_right_ui=False, key_callback=_key_callback
+    ) as m_viewer:
         # Create renderers at configured resolution
         rgb_renderer = mujoco.Renderer(model, height=height, width=width)
         depth_renderer = mujoco.Renderer(model, height=height, width=width)
@@ -141,6 +215,16 @@ def _run_simulation(config: GlobalConfig, shm: ShmReader) -> None:
         m_viewer.cam.azimuth = config.mujoco_camera_position_float[4]
         m_viewer.cam.elevation = config.mujoco_camera_position_float[5]
 
+        drone_camera = DroneCamera(
+            m_viewer.cam,
+            default_distance=config.mujoco_camera_position_float[3],
+            default_azimuth=config.mujoco_camera_position_float[4],
+            default_elevation=config.mujoco_camera_position_float[5],
+        )
+        logger.info(
+            "[DroneCamera] Ready — F:follow/free  Arrows:orbit  +/-:zoom  PgUp/Dn:alt  R:reset"
+        )
+
         while m_viewer.is_running() and not shm.should_stop():
             step_start = time.time()
 
@@ -150,6 +234,9 @@ def _run_simulation(config: GlobalConfig, shm: ShmReader) -> None:
 
             person_position_controller.tick(data)
 
+            # Update drone camera tracking
+            drone_camera.update(data.qpos[0:3])
+
             # Update FPS counter
             fps_frame_count += 1
             fps_now = time.time()
@@ -158,9 +245,10 @@ def _run_simulation(config: GlobalConfig, shm: ShmReader) -> None:
                 fps_display = fps_frame_count / fps_elapsed
                 fps_frame_count = 0
                 fps_last_time = fps_now
-            m_viewer.set_texts(
-                (mujoco.mjtFont.mjFONT_BIG, mujoco.mjtGridPos.mjGRID_TOPLEFT, f"FPS: {fps_display:.0f}", "")
-            )
+            m_viewer.set_texts([
+                (mujoco.mjtFont.mjFONT_BIG, mujoco.mjtGridPos.mjGRID_TOPLEFT, f"FPS: {fps_display:.0f}", ""),
+                (mujoco.mjtFont.mjFONT_NORMAL, mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, drone_camera.status_text(), ""),
+            ])
 
             m_viewer.sync()
 

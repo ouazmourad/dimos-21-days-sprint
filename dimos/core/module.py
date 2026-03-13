@@ -378,7 +378,10 @@ class ModuleBase(Configurable[ModuleConfigT], Resource):
         for name in dir(self):
             attr = getattr(self, name)
             if callable(attr) and hasattr(attr, "__skill__"):
-                schema = json.dumps(tool(attr).args_schema.model_json_schema())
+                try:
+                    schema = json.dumps(tool(attr).args_schema.model_json_schema())
+                except Exception:
+                    schema = "{}"
                 skills.append(
                     SkillInfo(
                         class_name=self.__class__.__name__, func_name=name, args_schema=schema

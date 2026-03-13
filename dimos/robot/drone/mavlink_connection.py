@@ -337,7 +337,7 @@ class MavlinkConnection:
         """Move using ROS-style Twist commands.
 
         Args:
-            twist: Twist message with linear velocities (angular.z ignored for now)
+            twist: Twist message with linear and angular velocities
             duration: How long to move (0 = single command)
             lock_altitude: If True, ignore Z velocity and maintain current altitude
 
@@ -351,6 +351,12 @@ class MavlinkConnection:
         forward = twist.linear.x  # m/s forward (body frame)
         right = twist.linear.y  # m/s right (body frame)
         down = 0.0 if lock_altitude else -twist.linear.z  # Lock altitude by default
+        yaw_rate = twist.angular.z  # rad/s yaw rate
+
+        # type_mask: enable velocities + yaw_rate
+        # Bit 11 (0x800) = yaw rate, bit 10 (0x400) = yaw
+        # 0b0000100111000111 = ignore pos, accel, yaw; use vel + yaw_rate
+        type_mask = 0b0000100111000111
 
         if duration > 0:
             # Send velocity for duration
@@ -361,7 +367,7 @@ class MavlinkConnection:
                     self.mavlink.target_system,
                     self.mavlink.target_component,
                     mavutil.mavlink.MAV_FRAME_BODY_NED,  # Body frame for strafing
-                    0b0000111111000111,  # type_mask - velocities only, no rotation
+                    type_mask,
                     0,
                     0,
                     0,  # positions (ignored)
@@ -372,7 +378,7 @@ class MavlinkConnection:
                     0,
                     0,  # accelerations (ignored)
                     0,
-                    0,  # yaw, yaw_rate (ignored)
+                    yaw_rate,  # yaw (ignored), yaw_rate
                 )
                 time.sleep(0.05)  # 20Hz
             # Send stop command
@@ -384,7 +390,7 @@ class MavlinkConnection:
                 self.mavlink.target_system,
                 self.mavlink.target_component,
                 mavutil.mavlink.MAV_FRAME_BODY_NED,  # Body frame for strafing
-                0b0000111111000111,  # type_mask - velocities only, no rotation
+                type_mask,
                 0,
                 0,
                 0,  # positions (ignored)
@@ -395,7 +401,7 @@ class MavlinkConnection:
                 0,
                 0,  # accelerations (ignored)
                 0,
-                0,  # yaw, yaw_rate (ignored)
+                yaw_rate,  # yaw (ignored), yaw_rate
             )
 
         return True

@@ -269,24 +269,48 @@ class DroneConnectionModule(Module):
         return self._status.copy()
 
     @skill
-    def move(self, vector: Vector3, duration: float = 0.0) -> None:
-        """Send movement command to drone.
+    def move(self, x: float = 0.0, y: float = 0.0, z: float = 0.0, duration: float = 0.0) -> str:
+        """Send velocity movement command to drone.
 
         Args:
-            vector: Velocity vector [x, y, z] in m/s
-            duration: How long to move (0 = continuous)
+            x: Forward/backward velocity in m/s (positive = forward)
+            y: Left/right velocity in m/s (positive = left)
+            z: Up/down velocity in m/s (positive = up)
+            duration: How long to move in seconds (0 = single command)
+
+        Returns:
+            Result message
         """
         if self.connection:
-            # Convert dict/list to Vector3
-            if isinstance(vector, dict):
-                vector = Vector3(vector.get("x", 0), vector.get("y", 0), vector.get("z", 0))
-            elif isinstance(vector, (list, tuple)):
-                vector = Vector3(
-                    vector[0] if len(vector) > 0 else 0,
-                    vector[1] if len(vector) > 1 else 0,
-                    vector[2] if len(vector) > 2 else 0,
-                )
+            vector = Vector3(float(x), float(y), float(z))
             self.connection.move(vector, duration)
+            return f"Moving: vx={x}, vy={y}, vz={z} for {duration}s"
+        return "Failed: No connection"
+
+    @skill
+    def move_with_yaw(self, vx: float = 0.0, vy: float = 0.0, vz: float = 0.0, yaw_rate: float = 0.0, duration: float = 2.0) -> str:
+        """Move the drone with velocity and yaw control.
+
+        Use this for turning/rotating the drone. Positive yaw_rate = turn right, negative = turn left.
+
+        Args:
+            vx: Forward/backward velocity in m/s (positive = forward)
+            vy: Left/right velocity in m/s (positive = right)
+            vz: Up/down velocity in m/s (positive = down in NED, but this method inverts it: positive = up)
+            yaw_rate: Yaw rotation rate in rad/s (positive = clockwise/right, negative = counter-clockwise/left). Use 0.5 for slow turn, 1.0 for medium, 1.57 for 90 deg/s.
+            duration: How long to apply the command in seconds
+
+        Returns:
+            Result message
+        """
+        if self.connection:
+            twist = Twist()
+            twist.linear = Vector3(float(vx), float(vy), float(vz))
+            twist.angular = Vector3(0.0, 0.0, float(yaw_rate))
+            lock_alt = float(vz) == 0.0
+            self.connection.move_twist(twist, duration=float(duration), lock_altitude=lock_alt)
+            return f"Moving: vx={vx}, vy={vy}, vz={vz}, yaw_rate={yaw_rate} for {duration}s"
+        return "Failed: No connection"
 
     @skill
     def takeoff(self, altitude: float = 3.0) -> bool:
@@ -444,8 +468,9 @@ class DroneConnectionModule(Module):
             msg: Twist message with linear and angular velocities
         """
         if self.connection:
-            # Use move_twist to properly handle Twist messages
-            self.connection.move_twist(msg, duration=0, lock_altitude=True)
+            # Lock altitude only when no Z velocity is commanded
+            lock_alt = msg.linear.z == 0.0
+            self.connection.move_twist(msg, duration=0, lock_altitude=lock_alt)
 
     def _on_gps_goal(self, cmd: LatLon) -> None:
         if self._latest_telemetry is None or self.connection is None:
