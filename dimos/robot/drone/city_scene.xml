@@ -4,6 +4,10 @@
   <option timestep="0.01" density="1.225" viscosity="1.8e-5"/>
 
   <default>
+    <!-- City scenery: visual only, no collision with drone -->
+    <default class="scenery">
+      <geom contype="0" conaffinity="0"/>
+    </default>
     <default class="x2">
       <geom mass="0"/>
       <motor ctrlrange="0 13"/>
@@ -87,165 +91,165 @@
   <worldbody>
     <!-- Lights -->
     <light pos="0 0 30" dir="0 0 -1" directional="true" diffuse="0.8 0.8 0.75" castshadow="true"/>
-    <light pos="20 -20 25" dir="-0.5 0.5 -1" diffuse="0.3 0.3 0.35"/>
+    <light pos="-20 20 25" dir="0.5 -0.5 -1" diffuse="0.3 0.3 0.35"/>
 
     <!-- Ground plane -->
     <geom name="floor" size="50 50 0.1" type="plane" material="ground"/>
 
     <!-- ═══════════════ ROADS ═══════════════ -->
-    <!-- Main road (runs along Y axis) -->
-    <geom type="box" size="3.5 50 0.005" pos="0 0 0.005" material="road"/>
+    <!-- Main road (runs along X axis) -->
+    <geom class="scenery" type="box" size="50 3.5 0.005" pos="0 0 0.005" material="road"/>
     <!-- Center line -->
-    <geom type="box" size="0.05 50 0.006" pos="0 0 0.006" material="yellow_paint"/>
+    <geom class="scenery" type="box" size="50 0.05 0.006" pos="0 0 0.006" material="yellow_paint"/>
 
     <!-- Cross street (runs along X axis) -->
-    <geom type="box" size="50 3.5 0.005" pos="0 15 0.005" material="road"/>
-    <geom type="box" size="50 0.05 0.006" pos="0 15 0.006" material="yellow_paint"/>
+    <geom class="scenery" type="box" size="3.5 50 0.005" pos="15 0 0.005" material="road"/>
+    <geom class="scenery" type="box" size="0.05 50 0.006" pos="15 0 0.006" material="yellow_paint"/>
 
     <!-- Second cross street -->
-    <geom type="box" size="50 3.5 0.005" pos="0 -15 0.005" material="road"/>
-    <geom type="box" size="50 0.05 0.006" pos="0 -15 0.006" material="yellow_paint"/>
+    <geom class="scenery" type="box" size="3.5 50 0.005" pos="-15 0 0.005" material="road"/>
+    <geom class="scenery" type="box" size="0.05 50 0.006" pos="-15 0 0.006" material="yellow_paint"/>
 
     <!-- Sidewalks along main road -->
-    <geom type="box" size="0.8 50 0.06" pos="4.3 0 0.06" material="sidewalk"/>
-    <geom type="box" size="0.8 50 0.06" pos="-4.3 0 0.06" material="sidewalk"/>
+    <geom class="scenery" type="box" size="50 0.8 0.06" pos="0 4.3 0.06" material="sidewalk"/>
+    <geom class="scenery" type="box" size="50 0.8 0.06" pos="0 -4.3 0.06" material="sidewalk"/>
 
     <!-- ═══════════════ BLOCK 1: Downtown (right of main road) ═══════════════ -->
 
     <!-- Tall office tower -->
-    <geom type="box" size="4 3 10" pos="10 0 10" material="dark_glass"/>
-    <geom type="box" size="4.1 3.1 0.15" pos="10 0 20" material="steel"/> <!-- roof edge -->
+    <geom class="scenery" type="box" size="3 4 10" pos="0 10 10" material="dark_glass"/>
+    <geom class="scenery" type="box" size="3.1 4.1 0.15" pos="0 10 20" material="steel"/> <!-- roof edge -->
 
     <!-- Medium concrete building -->
-    <geom type="box" size="3 4 6" pos="10 -9 6" material="concrete"/>
-    <geom type="box" size="2.5 3.5 0.5" pos="10 -9 12" material="concrete"/> <!-- rooftop structure -->
+    <geom class="scenery" type="box" size="4 3 6" pos="-9 10 6" material="concrete"/>
+    <geom class="scenery" type="box" size="3.5 2.5 0.5" pos="-9 10 12" material="concrete"/> <!-- rooftop structure -->
 
     <!-- Red brick apartment -->
-    <geom type="box" size="3.5 3 4" pos="10 9 4" material="red_brick"/>
-    <geom type="box" size="3.6 3.1 0.1" pos="10 9 8" material="brick"/> <!-- cornice -->
+    <geom class="scenery" type="box" size="3 3.5 4" pos="9 10 4" material="red_brick"/>
+    <geom class="scenery" type="box" size="3.1 3.6 0.1" pos="9 10 8" material="brick"/> <!-- cornice -->
 
     <!-- Small shop row -->
-    <geom type="box" size="2.5 2 2.5" pos="6 -8 2.5" material="white_concrete"/>
-    <geom type="box" size="2.5 2 2.5" pos="6 -4 2.5" material="brick"/>
+    <geom class="scenery" type="box" size="2 2.5 2.5" pos="-8 6 2.5" material="white_concrete"/>
+    <geom class="scenery" type="box" size="2 2.5 2.5" pos="-4 6 2.5" material="brick"/>
 
     <!-- ═══════════════ BLOCK 2: Left of main road ═══════════════ -->
 
     <!-- Glass skyscraper -->
-    <geom type="box" size="3 3.5 14" pos="-10 -2 14" material="glass"/>
-    <geom type="box" size="2.5 3 2" pos="-10 -2 30" material="steel"/> <!-- antenna structure -->
+    <geom class="scenery" type="box" size="3.5 3 14" pos="-2 -10 14" material="glass"/>
+    <geom class="scenery" type="box" size="3 2.5 2" pos="-2 -10 30" material="steel"/> <!-- antenna structure -->
 
     <!-- Parking garage -->
-    <geom type="box" size="5 4 3" pos="-11 10 3" material="concrete"/>
-    <geom type="box" size="4.8 3.8 0.1" pos="-11 10 6" material="concrete"/> <!-- top level -->
+    <geom class="scenery" type="box" size="4 5 3" pos="10 -11 3" material="concrete"/>
+    <geom class="scenery" type="box" size="3.8 4.8 0.1" pos="10 -11 6" material="concrete"/> <!-- top level -->
 
     <!-- Row houses -->
-    <geom type="box" size="2.5 1.5 3" pos="-7 -10 3" material="brick"/>
-    <geom type="box" size="2.5 1.5 3.5" pos="-7 -13 3.5" material="red_brick"/>
-    <geom type="box" size="2.5 1.5 2.8" pos="-7 -16 2.8" material="white_concrete"/>
+    <geom class="scenery" type="box" size="1.5 2.5 3" pos="-10 -7 3" material="brick"/>
+    <geom class="scenery" type="box" size="1.5 2.5 3.5" pos="-13 -7 3.5" material="red_brick"/>
+    <geom class="scenery" type="box" size="1.5 2.5 2.8" pos="-16 -7 2.8" material="white_concrete"/>
 
     <!-- Modern office -->
-    <geom type="box" size="3.5 3 7" pos="-10 -12 7" material="steel"/>
+    <geom class="scenery" type="box" size="3 3.5 7" pos="-12 -10 7" material="steel"/>
 
     <!-- ═══════════════ BLOCK 3: Far buildings ═══════════════ -->
 
     <!-- Distant skyline buildings -->
-    <geom type="box" size="3 3 18" pos="22 5 18" material="dark_glass"/>
-    <geom type="box" size="4 3 12" pos="22 -5 12" material="steel"/>
-    <geom type="box" size="3 4 8" pos="20 15 8" material="concrete"/>
-    <geom type="box" size="5 3 15" pos="-22 0 15" material="glass"/>
-    <geom type="box" size="3 5 10" pos="-20 -15 10" material="dark_glass"/>
-    <geom type="box" size="4 3 7" pos="18 -18 7" material="brick"/>
+    <geom class="scenery" type="box" size="3 3 18" pos="5 22 18" material="dark_glass"/>
+    <geom class="scenery" type="box" size="3 4 12" pos="-5 22 12" material="steel"/>
+    <geom class="scenery" type="box" size="4 3 8" pos="15 20 8" material="concrete"/>
+    <geom class="scenery" type="box" size="3 5 15" pos="0 -22 15" material="glass"/>
+    <geom class="scenery" type="box" size="5 3 10" pos="-15 -20 10" material="dark_glass"/>
+    <geom class="scenery" type="box" size="3 4 7" pos="-18 18 7" material="brick"/>
 
     <!-- ═══════════════ PARK ═══════════════ -->
-    <geom type="box" size="5 4 0.01" pos="18 15 0.01" material="grass"/>
+    <geom class="scenery" type="box" size="4 5 0.01" pos="15 18 0.01" material="grass"/>
     <!-- Trees (simple cylinders + spheres) -->
-    <geom type="cylinder" size="0.15 1.2" pos="16 14 1.2" material="brick"/>
-    <geom type="sphere" size="0.8" pos="16 14 2.8" rgba="0.15 0.5 0.12 1"/>
-    <geom type="cylinder" size="0.12 1.0" pos="19 16 1.0" material="brick"/>
-    <geom type="sphere" size="0.7" pos="19 16 2.3" rgba="0.2 0.55 0.15 1"/>
-    <geom type="cylinder" size="0.15 1.3" pos="17 17 1.3" material="brick"/>
-    <geom type="sphere" size="0.9" pos="17 17 3.0" rgba="0.12 0.45 0.1 1"/>
+    <geom class="scenery" type="cylinder" size="0.15 1.2" pos="14 16 1.2" material="brick"/>
+    <geom class="scenery" type="sphere" size="0.8" pos="14 16 2.8" rgba="0.15 0.5 0.12 1"/>
+    <geom class="scenery" type="cylinder" size="0.12 1.0" pos="16 19 1.0" material="brick"/>
+    <geom class="scenery" type="sphere" size="0.7" pos="16 19 2.3" rgba="0.2 0.55 0.15 1"/>
+    <geom class="scenery" type="cylinder" size="0.15 1.3" pos="17 17 1.3" material="brick"/>
+    <geom class="scenery" type="sphere" size="0.9" pos="17 17 3.0" rgba="0.12 0.45 0.1 1"/>
 
     <!-- ═══════════════ STREET LIGHTS ═══════════════ -->
-    <geom type="cylinder" size="0.06 3" pos="4.3 5 3" material="steel"/>
-    <geom type="box" size="0.5 0.05 0.05" pos="3.8 5 6" material="steel"/>
-    <geom type="cylinder" size="0.06 3" pos="4.3 -5 3" material="steel"/>
-    <geom type="box" size="0.5 0.05 0.05" pos="3.8 -5 6" material="steel"/>
-    <geom type="cylinder" size="0.06 3" pos="-4.3 5 3" material="steel"/>
-    <geom type="box" size="0.5 0.05 0.05" pos="-3.8 5 6" material="steel"/>
-    <geom type="cylinder" size="0.06 3" pos="-4.3 -5 3" material="steel"/>
-    <geom type="box" size="0.5 0.05 0.05" pos="-3.8 -5 6" material="steel"/>
+    <geom class="scenery" type="cylinder" size="0.06 3" pos="5 4.3 3" material="steel"/>
+    <geom class="scenery" type="box" size="0.05 0.5 0.05" pos="5 3.8 6" material="steel"/>
+    <geom class="scenery" type="cylinder" size="0.06 3" pos="-5 4.3 3" material="steel"/>
+    <geom class="scenery" type="box" size="0.05 0.5 0.05" pos="-5 3.8 6" material="steel"/>
+    <geom class="scenery" type="cylinder" size="0.06 3" pos="5 -4.3 3" material="steel"/>
+    <geom class="scenery" type="box" size="0.05 0.5 0.05" pos="5 -3.8 6" material="steel"/>
+    <geom class="scenery" type="cylinder" size="0.06 3" pos="-5 -4.3 3" material="steel"/>
+    <geom class="scenery" type="box" size="0.05 0.5 0.05" pos="-5 -3.8 6" material="steel"/>
 
     <!-- ═══════════════ CARS ═══════════════ -->
 
     <!-- Car 1: Red sedan on main road, heading north -->
-    <body name="car1" pos="1.5 3 0.25">
-      <geom type="box" size="0.9 0.45 0.25" material="car_red"/>   <!-- body -->
-      <geom type="box" size="0.5 0.42 0.22" pos="-0.05 0 0.35" material="window"/> <!-- cabin -->
-      <geom type="cylinder" size="0.18 0.08" pos="0.55 0.5 -0.12" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.18 0.08" pos="0.55 -0.5 -0.12" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.18 0.08" pos="-0.55 0.5 -0.12" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.18 0.08" pos="-0.55 -0.5 -0.12" euler="90 0 0" material="tire"/>
+    <body name="car1" pos="3 1.5 0.25">
+      <geom class="scenery" type="box" size="0.45 0.9 0.25" material="car_red"/>   <!-- body -->
+      <geom class="scenery" type="box" size="0.42 0.5 0.22" pos="0 -0.05 0.35" material="window"/> <!-- cabin -->
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="0.5 0.55 -0.12" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="-0.5 0.55 -0.12" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="0.5 -0.55 -0.12" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="-0.5 -0.55 -0.12" euler="90 0 0" material="tire"/>
     </body>
 
     <!-- Car 2: Blue SUV, heading south -->
-    <body name="car2" pos="-1.5 -6 0.3">
-      <geom type="box" size="1.1 0.5 0.3" material="car_blue"/>
-      <geom type="box" size="0.65 0.47 0.28" pos="-0.1 0 0.42" material="window"/>
-      <geom type="cylinder" size="0.2 0.09" pos="0.65 0.55 -0.15" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.2 0.09" pos="0.65 -0.55 -0.15" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.2 0.09" pos="-0.65 0.55 -0.15" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.2 0.09" pos="-0.65 -0.55 -0.15" euler="90 0 0" material="tire"/>
+    <body name="car2" pos="-6 -1.5 0.3">
+      <geom class="scenery" type="box" size="0.5 1.1 0.3" material="car_blue"/>
+      <geom class="scenery" type="box" size="0.47 0.65 0.28" pos="0 -0.1 0.42" material="window"/>
+      <geom class="scenery" type="cylinder" size="0.2 0.09" pos="0.55 0.65 -0.15" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.2 0.09" pos="-0.55 0.65 -0.15" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.2 0.09" pos="0.55 -0.65 -0.15" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.2 0.09" pos="-0.55 -0.65 -0.15" euler="90 0 0" material="tire"/>
     </body>
 
     <!-- Car 3: White sedan on cross street -->
-    <body name="car3" pos="8 16 0.25" euler="0 0 90">
-      <geom type="box" size="0.9 0.45 0.25" material="car_white"/>
-      <geom type="box" size="0.5 0.42 0.22" pos="-0.05 0 0.35" material="window"/>
-      <geom type="cylinder" size="0.18 0.08" pos="0.55 0.5 -0.12" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.18 0.08" pos="0.55 -0.5 -0.12" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.18 0.08" pos="-0.55 0.5 -0.12" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.18 0.08" pos="-0.55 -0.5 -0.12" euler="90 0 0" material="tire"/>
+    <body name="car3" pos="16 8 0.25" euler="0 0 90">
+      <geom class="scenery" type="box" size="0.45 0.9 0.25" material="car_white"/>
+      <geom class="scenery" type="box" size="0.42 0.5 0.22" pos="0 -0.05 0.35" material="window"/>
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="0.5 0.55 -0.12" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="-0.5 0.55 -0.12" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="0.5 -0.55 -0.12" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="-0.5 -0.55 -0.12" euler="90 0 0" material="tire"/>
     </body>
 
     <!-- Car 4: Black SUV parked -->
-    <body name="car4" pos="5.5 -2 0.3">
-      <geom type="box" size="1.1 0.5 0.3" material="car_black"/>
-      <geom type="box" size="0.65 0.47 0.28" pos="-0.1 0 0.42" material="window"/>
-      <geom type="cylinder" size="0.2 0.09" pos="0.65 0.55 -0.15" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.2 0.09" pos="0.65 -0.55 -0.15" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.2 0.09" pos="-0.65 0.55 -0.15" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.2 0.09" pos="-0.65 -0.55 -0.15" euler="90 0 0" material="tire"/>
+    <body name="car4" pos="-2 5.5 0.3">
+      <geom class="scenery" type="box" size="0.5 1.1 0.3" material="car_black"/>
+      <geom class="scenery" type="box" size="0.47 0.65 0.28" pos="0 -0.1 0.42" material="window"/>
+      <geom class="scenery" type="cylinder" size="0.2 0.09" pos="0.55 0.65 -0.15" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.2 0.09" pos="-0.55 0.65 -0.15" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.2 0.09" pos="0.55 -0.65 -0.15" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.2 0.09" pos="-0.55 -0.65 -0.15" euler="90 0 0" material="tire"/>
     </body>
 
     <!-- Car 5: Silver sedan -->
-    <body name="car5" pos="-1.5 12 0.25">
-      <geom type="box" size="0.9 0.45 0.25" material="car_silver"/>
-      <geom type="box" size="0.5 0.42 0.22" pos="-0.05 0 0.35" material="window"/>
-      <geom type="cylinder" size="0.18 0.08" pos="0.55 0.5 -0.12" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.18 0.08" pos="0.55 -0.5 -0.12" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.18 0.08" pos="-0.55 0.5 -0.12" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.18 0.08" pos="-0.55 -0.5 -0.12" euler="90 0 0" material="tire"/>
+    <body name="car5" pos="12 -1.5 0.25">
+      <geom class="scenery" type="box" size="0.45 0.9 0.25" material="car_silver"/>
+      <geom class="scenery" type="box" size="0.42 0.5 0.22" pos="0 -0.05 0.35" material="window"/>
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="0.5 0.55 -0.12" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="-0.5 0.55 -0.12" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="0.5 -0.55 -0.12" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="-0.5 -0.55 -0.12" euler="90 0 0" material="tire"/>
     </body>
 
     <!-- Car 6: Yellow taxi on cross street -->
-    <body name="car6" pos="-12 -14.5 0.25" euler="0 0 90">
-      <geom type="box" size="0.95 0.45 0.25" material="car_yellow"/>
-      <geom type="box" size="0.5 0.42 0.22" pos="-0.05 0 0.35" material="window"/>
-      <geom type="cylinder" size="0.18 0.08" pos="0.55 0.5 -0.12" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.18 0.08" pos="0.55 -0.5 -0.12" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.18 0.08" pos="-0.55 0.5 -0.12" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.18 0.08" pos="-0.55 -0.5 -0.12" euler="90 0 0" material="tire"/>
+    <body name="car6" pos="-14.5 -12 0.25" euler="0 0 90">
+      <geom class="scenery" type="box" size="0.45 0.95 0.25" material="car_yellow"/>
+      <geom class="scenery" type="box" size="0.42 0.5 0.22" pos="0 -0.05 0.35" material="window"/>
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="0.5 0.55 -0.12" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="-0.5 0.55 -0.12" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="0.5 -0.55 -0.12" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="-0.5 -0.55 -0.12" euler="90 0 0" material="tire"/>
     </body>
 
     <!-- Car 7: Red car parked on side street -->
-    <body name="car7" pos="5.5 8 0.25" euler="0 0 15">
-      <geom type="box" size="0.9 0.45 0.25" material="car_red"/>
-      <geom type="box" size="0.5 0.42 0.22" pos="-0.05 0 0.35" material="window"/>
-      <geom type="cylinder" size="0.18 0.08" pos="0.55 0.5 -0.12" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.18 0.08" pos="0.55 -0.5 -0.12" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.18 0.08" pos="-0.55 0.5 -0.12" euler="90 0 0" material="tire"/>
-      <geom type="cylinder" size="0.18 0.08" pos="-0.55 -0.5 -0.12" euler="90 0 0" material="tire"/>
+    <body name="car7" pos="8 5.5 0.25" euler="0 0 15">
+      <geom class="scenery" type="box" size="0.45 0.9 0.25" material="car_red"/>
+      <geom class="scenery" type="box" size="0.42 0.5 0.22" pos="0 -0.05 0.35" material="window"/>
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="0.5 0.55 -0.12" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="-0.5 0.55 -0.12" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="0.5 -0.55 -0.12" euler="90 0 0" material="tire"/>
+      <geom class="scenery" type="cylinder" size="0.18 0.08" pos="-0.5 -0.55 -0.12" euler="90 0 0" material="tire"/>
     </body>
 
     <!-- ═══════════════ DRONE (starts at street level) ═══════════════ -->

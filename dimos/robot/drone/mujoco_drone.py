@@ -188,8 +188,12 @@ class MuJocoDroneController:
         omega_body = R.T @ omega_world
 
         w, qx, qy, qz = quat
-        roll = math.atan2(2 * (w * qx + qy * qz), 1 - 2 * (qx**2 + qy**2))
-        pitch = math.asin(float(np.clip(2 * (w * qy - qz * qx), -1, 1)))
+
+        # Body-frame pitch/roll from gravity vector (works at any yaw)
+        # R[2,:] = world-up direction expressed in body frame
+        gz = R[2, :]  # body-frame gravity-up vector
+        pitch = math.atan2(-gz[0], gz[2])   # positive = nose down
+        roll = math.atan2(gz[1], gz[2])     # positive = right side down
 
         # 1. Collective thrust (vertical velocity PD)
         vz_err = self.cmd_vz - v_world[2]
@@ -218,6 +222,12 @@ class MuJocoDroneController:
             yaw_cmd = self.kp_yaw_angle * angle_err - self.kd_yaw * omega_body[2]
         else:
             yaw_cmd = self.kp_yaw_rate * (self.cmd_yaw_rate - omega_body[2])
+
+        # Yaw feedforward: cancel parasitic yaw torque from roll commands.
+        # Left motors (1,4) share the same gear sign, so roll thrust
+        # differential creates an unbalanced yaw torque. Adding roll_cmd
+        # to yaw_cmd cancels this coupling.
+        yaw_cmd += roll_cmd
 
         # 5. Motor mixing (X-config)
         t1 = base + pitch_cmd + roll_cmd - yaw_cmd   # rear-left   CCW
