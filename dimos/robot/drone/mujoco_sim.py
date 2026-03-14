@@ -49,7 +49,16 @@ class DimOSBridge:
     def start(self) -> None:
         import socket as _socket
 
+        from dimos.core.transport import LCMTransport, pLCMTransport
         from dimos.robot.drone.mujoco_skill_proxy import CMD_PORT
+
+        # Initialize LCM publishers for sensor data
+        self._odom_pub = LCMTransport("/drone/odom", PoseStamped)
+        self._odom_pub.start()
+        self._gps_pub = pLCMTransport("/drone/gps")
+        self._gps_pub.start()
+        self._status_pub = pLCMTransport("/drone/status")
+        self._status_pub.start()
 
         self._cmd_sock = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
         self._cmd_sock.bind(("127.0.0.1", CMD_PORT))
@@ -62,7 +71,8 @@ class DimOSBridge:
         self._cmd_thread = threading.Thread(target=self._cmd_listen_loop, daemon=True)
         self._cmd_thread.start()
 
-        print(f"[DimOS] Bridge started — listening on UDP {CMD_PORT}, agent at http://localhost:5555")
+        print(f"[DimOS] Bridge started — publishing on /drone/odom, /drone/gps, /drone/status")
+        print(f"[DimOS] Listening on UDP {CMD_PORT}, agent at http://localhost:5555")
 
     def _start_agent(self) -> None:
         try:
@@ -160,23 +170,22 @@ class DimOSBridge:
             frame_id="world",
             ts=now,
         )
-        self._odom_pub.publish(pose)
+        self._odom_pub.broadcast(None, pose)
 
         lat, lon = _local_to_gps(x, y)
-        self._gps_pub.publish(LatLon(lat=lat, lon=lon))
+        self._gps_pub.broadcast(None, LatLon(lat=lat, lon=lon))
 
         siny = 2.0 * (quat_mj[0] * quat_mj[3] + quat_mj[1] * quat_mj[2])
         cosy = 1.0 - 2.0 * (quat_mj[2] ** 2 + quat_mj[3] ** 2)
         heading_deg = math.degrees(math.atan2(siny, cosy)) % 360
 
-        from dimos_lcm.std_msgs import String
         status = {
             "armed": True, "mode": "GUIDED", "altitude": z,
             "heading": heading_deg, "lat": lat, "lon": lon,
             "vx": float(vel[3]), "vy": float(vel[4]), "vz": float(vel[5]),
             "simulator": "mujoco", "ts": now,
         }
-        self._status_pub.publish(String(json.dumps(status)))
+        self._status_pub.broadcast(None, json.dumps(status))
 
     def stop(self) -> None:
         self._running = False
