@@ -53,8 +53,29 @@ logger = setup_logger()
 T = TypeVar("T")
 
 
+def _default_camera_info() -> CameraInfo:
+    """Default camera intrinsics for MuJoCo (high-tier: 320x240, 45deg FOV)."""
+    import math
+
+    w, h, fov = 320, 240, 45
+    f = h / (2 * math.tan(math.radians(fov) / 2))
+    cx, cy = w / 2.0, h / 2.0
+    return CameraInfo(
+        frame_id="camera_optical",
+        height=h,
+        width=w,
+        distortion_model="plumb_bob",
+        D=[0.0, 0.0, 0.0, 0.0, 0.0],
+        K=[f, 0.0, cx, 0.0, f, cy, 0.0, 0.0, 1.0],
+        R=[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+        P=[f, 0.0, cx, 0.0, 0.0, f, cy, 0.0, 0.0, 0.0, 1.0, 0.0],
+    )
+
+
 class MujocoConnection:
     """MuJoCo simulator connection that runs in a separate subprocess."""
+
+    camera_info_static: CameraInfo = _default_camera_info()
 
     def __init__(self, global_config: GlobalConfig) -> None:
         try:

@@ -79,6 +79,9 @@ class Go1OnnxController(OnnxController):
         gravity = imu_xmat.T @ np.array([0, 0, -1])
         joint_angles = data.qpos[7:] - self._default_angles
         joint_velocities = data.qvel[6:]
+        command = self._input_controller.get_command()
+        command[0] = command[0] * 2  # Amplify forward/backward
+        command[1] = command[1] * 2  # Amplify lateral
         obs = np.hstack(
             [
                 linvel,
@@ -87,7 +90,7 @@ class Go1OnnxController(OnnxController):
                 joint_angles,
                 joint_velocities,
                 self._last_action,
-                self._input_controller.get_command(),
+                command,
             ]
         )
         return obs.astype(np.float32)
