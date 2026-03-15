@@ -41,6 +41,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--onnx", default=None, help="Path to ONNX policy file")
     p.add_argument("--episodes", type=int, default=5, help="Number of episodes")
     p.add_argument("--headless", action="store_true", help="No viewer, just print stats")
+    p.add_argument("--scene", default=None, help="Scene XML path (e.g. city_scene.xml)")
+    p.add_argument("--assets", nargs="*", default=None, help="Asset files (textures, meshes)")
     p.add_argument("--seed", type=int, default=42)
     return p.parse_args()
 
@@ -112,7 +114,27 @@ def _run_viewer(args, predict) -> None:
     mod_name, cls_name = _VIEWER_LOADERS[args.env]
     mod = importlib.import_module(f"dimos.simulation.gym.envs.{mod_name}")
     env_cls = getattr(mod, cls_name)
-    env = env_cls()
+
+    # Pass scene/assets kwargs for drone envs with custom scenes.
+    # Auto-detect city scene in data/mujoco_sim/ for drone envs.
+    env_kwargs = {}
+    if args.scene is not None:
+        env_kwargs["xml_path"] = args.scene
+        if args.assets is not None:
+            env_kwargs["asset_files"] = args.assets
+    elif args.env in ("DroneHover", "DroneVelocity"):
+        from pathlib import Path
+        from dimos.utils.data import get_data
+        data_dir = Path(str(get_data("mujoco_sim")))
+        city_xml = data_dir / "city_scene.xml"
+        if city_xml.exists():
+            env_kwargs["xml_path"] = str(city_xml)
+            asset_files = [
+                str(data_dir / "X2_lowpoly_texture_SpinningProps_1024.png"),
+                str(data_dir / "X2_lowpoly.obj"),
+            ]
+            env_kwargs["asset_files"] = [f for f in asset_files if Path(f).exists()]
+    env = env_cls(**env_kwargs)
 
     model = env.model
     data = env.data

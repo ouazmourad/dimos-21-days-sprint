@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+import os
+import xml.etree.ElementTree as ET
 
 import mujoco
 import numpy as np
@@ -14,6 +16,31 @@ from dimos.simulation.gym.rewards import (
     reward_energy_penalty,
     reward_upright,
 )
+
+
+def load_scene_with_assets(
+    xml_path: str,
+    asset_files: list[str] | None = None,
+) -> tuple[str, dict[str, bytes]]:
+    """Load a MuJoCo scene XML and external asset files into a string + dict.
+
+    Strips ``assetdir`` from the compiler so all files resolve via the dict.
+    """
+    with open(xml_path) as f:
+        xml = f.read()
+
+    root = ET.fromstring(xml)
+    compiler = root.find("compiler")
+    if compiler is not None and "assetdir" in compiler.attrib:
+        del compiler.attrib["assetdir"]
+    xml_string = ET.tostring(root, encoding="unicode")
+
+    assets: dict[str, bytes] = {}
+    for path in asset_files or []:
+        with open(path, "rb") as f:
+            assets[os.path.basename(path)] = f.read()
+
+    return xml_string, assets
 
 # Minimal physics-only drone XML (no visual meshes required).
 _DRONE_XML = """\
@@ -86,6 +113,8 @@ class DroneHoverEnv(DimOSMuJoCoEnv):
         target_altitude: float = 3.0,
         episode_length: int = 1000,
         render_mode: str | None = None,
+        xml_path: str | None = None,
+        asset_files: list[str] | None = None,
     ) -> None:
         super().__init__(
             sim_dt=0.01,
@@ -95,7 +124,11 @@ class DroneHoverEnv(DimOSMuJoCoEnv):
         )
         self._target_altitude = target_altitude
 
-        self.model = mujoco.MjModel.from_xml_string(_DRONE_XML)
+        if xml_path is not None:
+            xml_string, assets = load_scene_with_assets(xml_path, asset_files)
+            self.model = mujoco.MjModel.from_xml_string(xml_string, assets=assets)
+        else:
+            self.model = mujoco.MjModel.from_xml_string(_DRONE_XML)
         self.data = mujoco.MjData(self.model)
 
         self._body_id = mujoco.mj_name2id(

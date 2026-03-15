@@ -8,6 +8,7 @@ import mujoco
 import numpy as np
 
 from dimos.simulation.gym.base_env import DimOSMuJoCoEnv
+from dimos.simulation.gym.envs.drone_hover import load_scene_with_assets
 from dimos.simulation.gym.rewards import (
     reward_altitude_tracking,
     reward_alive,
@@ -89,6 +90,8 @@ class DroneVelocityEnv(DimOSMuJoCoEnv):
         cmd_change_interval: tuple[int, int] = (100, 300),
         episode_length: int = 1000,
         render_mode: str | None = None,
+        xml_path: str | None = None,
+        asset_files: list[str] | None = None,
     ) -> None:
         super().__init__(
             sim_dt=0.01,
@@ -99,7 +102,11 @@ class DroneVelocityEnv(DimOSMuJoCoEnv):
         self._target_altitude = target_altitude
         self._cmd_change_interval = cmd_change_interval
 
-        self.model = mujoco.MjModel.from_xml_string(_DRONE_XML)
+        if xml_path is not None:
+            xml_string, assets = load_scene_with_assets(xml_path, asset_files)
+            self.model = mujoco.MjModel.from_xml_string(xml_string, assets=assets)
+        else:
+            self.model = mujoco.MjModel.from_xml_string(_DRONE_XML)
         self.data = mujoco.MjData(self.model)
         self._body_id = mujoco.mj_name2id(
             self.model, mujoco.mjtObj.mjOBJ_BODY, "x2",
