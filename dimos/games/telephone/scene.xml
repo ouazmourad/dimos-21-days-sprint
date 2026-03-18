@@ -1,0 +1,118 @@
+<!--
+  Robot Telephone Arena
+
+  Three rooms separated by walls. Objects are scattered in Room A and Room C.
+  Room B is a relay station (Robot B stays here).
+
+  Room layout (top-down):
+
+  +--------+   +--------+   +--------+
+  | Room A |   | Room B |   | Room C |
+  | (desc) |   | (relay)|   | (seek) |
+  | *objs* |   |        |   | *objs* |
+  +--------+   +--------+   +--------+
+     0,0          10,0          20,0
+-->
+<mujoco model="telephone_arena">
+  <option timestep="0.005" gravity="0 0 -9.81"/>
+
+  <visual>
+    <map znear="0.01" zfar="100"/>
+    <quality shadowsize="2048"/>
+  </visual>
+
+  <asset>
+    <!-- Floor texture -->
+    <texture name="floor_tex" type="2d" builtin="checker" width="512" height="512"
+             rgb1="0.9 0.9 0.9" rgb2="0.7 0.7 0.7"/>
+    <material name="floor_mat" texture="floor_tex" texrepeat="8 8"/>
+
+    <!-- Wall material -->
+    <material name="wall_mat" rgba="0.6 0.6 0.65 1"/>
+
+    <!-- Object materials -->
+    <material name="red_mat"    rgba="0.9 0.15 0.1 1"/>
+    <material name="blue_mat"   rgba="0.1 0.3 0.9 1"/>
+    <material name="yellow_mat" rgba="0.95 0.85 0.1 1"/>
+    <material name="green_mat"  rgba="0.1 0.75 0.2 1"/>
+    <material name="orange_mat" rgba="0.95 0.5 0.05 1"/>
+    <material name="purple_mat" rgba="0.6 0.1 0.8 1"/>
+  </asset>
+
+  <worldbody>
+    <!-- Global light -->
+    <light pos="7 0 6" dir="0 0 -1" diffuse="0.8 0.8 0.8" ambient="0.3 0.3 0.3"/>
+
+    <!-- ==================== FLOORS ==================== -->
+    <geom type="plane" size="3.5 3.5 0.01" pos="0 0 0" material="floor_mat"/>
+    <geom type="plane" size="3.5 3.5 0.01" pos="10 0 0" material="floor_mat"/>
+    <geom type="plane" size="3.5 3.5 0.01" pos="20 0 0" material="floor_mat"/>
+
+    <!-- ==================== WALLS ==================== -->
+    <!-- Between Room A and Room B -->
+    <geom type="box" size="0.1 3.5 1.5" pos="5 0 1.5" material="wall_mat"/>
+    <!-- Between Room B and Room C -->
+    <geom type="box" size="0.1 3.5 1.5" pos="15 0 1.5" material="wall_mat"/>
+
+    <!-- Outer walls -->
+    <geom type="box" size="0.1 3.5 1.0" pos="-3.5 0 1.0" material="wall_mat"/>
+    <geom type="box" size="0.1 3.5 1.0" pos="23.5 0 1.0" material="wall_mat"/>
+    <geom type="box" size="13.5 0.1 1.0" pos="10 3.5 1.0" material="wall_mat"/>
+    <geom type="box" size="13.5 0.1 1.0" pos="10 -3.5 1.0" material="wall_mat"/>
+
+    <!-- ==================== ROOM A OBJECTS ==================== -->
+    <!-- Red mug (cylinder) -->
+    <body name="red_mug" pos="1.5 1.0 0.06">
+      <geom type="cylinder" size="0.04 0.06" material="red_mat"/>
+    </body>
+
+    <!-- Blue ball -->
+    <body name="blue_ball" pos="-1.0 -0.5 0.05">
+      <geom type="sphere" size="0.05" material="blue_mat"/>
+    </body>
+
+    <!-- Yellow cube -->
+    <body name="yellow_cube" pos="0.5 -1.5 0.04">
+      <geom type="box" size="0.04 0.04 0.04" material="yellow_mat"/>
+    </body>
+
+    <!-- Green bottle (tall cylinder) -->
+    <body name="green_bottle" pos="-1.5 1.5 0.1">
+      <geom type="cylinder" size="0.03 0.10" material="green_mat"/>
+    </body>
+
+    <!-- Orange cone (capsule approximation) -->
+    <body name="orange_cone" pos="2.0 -1.0 0.06">
+      <geom type="capsule" size="0.03 0.06" material="orange_mat"/>
+    </body>
+
+    <!-- ==================== ROOM C OBJECTS ==================== -->
+    <!-- Matching objects (targets) -->
+    <body name="red_mug_c" pos="21.5 1.0 0.06">
+      <geom type="cylinder" size="0.04 0.06" material="red_mat"/>
+    </body>
+
+    <body name="blue_ball_c" pos="19.0 -0.5 0.05">
+      <geom type="sphere" size="0.05" material="blue_mat"/>
+    </body>
+
+    <!-- Decoy objects (similar but different) -->
+    <body name="red_ball_decoy" pos="20.5 -1.5 0.05">
+      <geom type="sphere" size="0.05" material="red_mat"/>
+    </body>
+
+    <body name="purple_cube_decoy" pos="18.5 1.5 0.04">
+      <geom type="box" size="0.04 0.04 0.04" material="purple_mat"/>
+    </body>
+
+    <body name="green_cylinder_decoy" pos="21.0 -0.8 0.06">
+      <geom type="cylinder" size="0.04 0.04" material="green_mat"/>
+    </body>
+
+    <!-- Robot spawn positions are set via GlobalConfig.mujoco_start_pos:
+         Robot A: (0, 0)    center of Room A
+         Robot B: (10, 0)   center of Room B
+         Robot C: (20, 0)   center of Room C
+    -->
+  </worldbody>
+</mujoco>
