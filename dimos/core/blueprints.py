@@ -184,14 +184,31 @@ class Blueprint:
 
     def _get_transport_for(self, name: str, stream_type: type) -> PubSubTransport[Any]:
         transport = self.transport_map.get((name, stream_type), None)
+        prefix = f"/{global_config.instance_id}" if global_config.instance_id else ""
+
         if transport:
+            if prefix:
+                self._apply_instance_prefix(transport, prefix)
             return transport
 
         use_pickled = getattr(stream_type, "lcm_encode", None) is None
         topic = f"/{name}" if self._is_name_unique(name) else f"/{short_id()}"
+        topic = f"{prefix}{topic}"
         transport = pLCMTransport(topic) if use_pickled else LCMTransport(topic, stream_type)
 
         return transport
+
+    @staticmethod
+    def _apply_instance_prefix(transport: PubSubTransport[Any], prefix: str) -> None:
+        """Prefix an explicit transport's LCM topic with instance namespace."""
+        if isinstance(transport, LCMTransport):
+            topic_obj = transport.topic
+            if hasattr(topic_obj, "topic") and isinstance(topic_obj.topic, str):
+                if not topic_obj.topic.startswith(prefix):
+                    topic_obj.topic = f"{prefix}{topic_obj.topic}"
+        elif isinstance(transport, pLCMTransport) and isinstance(transport.topic, str):
+            if not transport.topic.startswith(prefix):
+                transport.topic = f"{prefix}{transport.topic}"
 
     @cached_property
     def _all_name_types(self) -> set[tuple[str, type]]:
@@ -481,6 +498,12 @@ class Blueprint:
             global_config.update(**dict(cli_config_overrides))
 
         self._run_configurators()
+
+        explicit_fields = set(self.global_config_overrides.keys())
+        if cli_config_overrides:
+            explicit_fields |= set(cli_config_overrides.keys())
+        global_config.resolve_performance_tier(explicit_overrides=explicit_fields)
+
         self._check_requirements()
         self._verify_no_name_conflicts()
 

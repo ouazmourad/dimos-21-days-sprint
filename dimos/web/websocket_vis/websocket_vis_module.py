@@ -46,6 +46,7 @@ _COMMAND_CENTER_DIR = (
 )
 
 from dimos.core.core import rpc
+from dimos.core.global_config import GlobalConfig, global_config
 from dimos.core.module import Module, ModuleConfig
 from dimos.core.stream import In, Out
 from dimos.mapping.models import LatLon
@@ -106,14 +107,22 @@ class WebsocketVisModule(Module[WebsocketConfig]):
     cmd_vel: Out[Twist]
     movecmd_stamped: Out[TwistStamped]
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        port: int | None = None,
+        cfg: GlobalConfig = global_config,
+        **kwargs: Any,
+    ) -> None:
         """Initialize the WebSocket visualization module.
 
         Args:
-            port: Port to run the web server on
-            cfg: Optional global config for viewer settings
+            port: Port to run the web server on (defaults to cfg.websocket_port)
+            cfg: Optional global config for viewer backend settings
         """
         super().__init__(**kwargs)
+        self._global_config = cfg
+
+        self.port = port if port is not None else getattr(cfg, "websocket_port", 7779)
         self._uvicorn_server_thread: threading.Thread | None = None
         self.sio: socketio.AsyncServer | None = None
         self.app = None
@@ -238,8 +247,14 @@ class WebsocketVisModule(Module[WebsocketConfig]):
             if self.config.g.viewer != "rerun-web":
                 return RedirectResponse(url="/command-center")
 
-            # Otherwise serve full dashboard with Rerun iframe
-            return FileResponse(_DASHBOARD_HTML, media_type="text/html")
+            # Otherwise serve full dashboard with Rerun iframe, injecting configured ports
+            rerun_port = getattr(self._global_config, "rerun_port", 9090) or 9090
+            grpc_port = rerun_port + 786  # 9090->9876, 9091->9877
+            html = _DASHBOARD_HTML.read_text()
+            html = html.replace("localhost:7779", f"localhost:{self.port}")
+            html = html.replace("localhost:9090", f"localhost:{rerun_port}")
+            html = html.replace("localhost:9876", f"localhost:{grpc_port}")
+            return Response(content=html, media_type="text/html")
 
         async def serve_command_center(request):  # type: ignore[no-untyped-def]
             """Serve the command center 2D visualization (built React app)."""

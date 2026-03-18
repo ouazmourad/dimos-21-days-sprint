@@ -176,6 +176,7 @@ class Config(ModuleConfig):
     topic_to_entity: Callable[[Any], str] | None = None
     viewer_mode: ViewerMode = field(default_factory=_resolve_viewer_mode)
     connect_url: str = "rerun+http://127.0.0.1:9877/proxy"
+    web_port: int | None = None
     memory_limit: str = "25%"
 
     # Blueprint factory: callable(rrb) -> Blueprint for viewer layout configuration
@@ -200,6 +201,12 @@ class RerunBridgeModule(Module[Config]):
     """
 
     default_config = Config
+
+    def __init__(self, cfg: Any = None, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        if self.config.web_port is None:
+            rerun_port = getattr(cfg, "rerun_port", None) if cfg else None
+            self.config.web_port = rerun_port or RERUN_WEB_PORT
 
     @lru_cache(maxsize=256)
     def _visual_override_for_entity_path(
@@ -307,8 +314,12 @@ class RerunBridgeModule(Module[Config]):
                 )
             rr.spawn(connect=True, memory_limit=self.config.memory_limit)
         elif self.config.viewer_mode == "web":
-            server_uri = rr.serve_grpc()
-            rr.serve_web_viewer(connect_to=server_uri, open_browser=False)
+            try:
+                grpc_port = (self.config.web_port or RERUN_WEB_PORT) + RERUN_GRPC_PORT - RERUN_WEB_PORT
+                server_uri = rr.serve_grpc(grpc_port=grpc_port)
+                rr.serve_web_viewer(connect_to=server_uri, open_browser=False, web_port=self.config.web_port)
+            except Exception:
+                logger.warning(f"Rerun web viewer failed to start on port {self.config.web_port}, visualization may be unavailable")
         elif self.config.viewer_mode == "connect":
             rr.connect_grpc(self.config.connect_url)
         # "none" - just init, no viewer (connect externally)
