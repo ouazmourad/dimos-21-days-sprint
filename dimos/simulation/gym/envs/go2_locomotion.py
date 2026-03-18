@@ -8,13 +8,6 @@ import mujoco
 import numpy as np
 
 from dimos.simulation.gym.base_env import DimOSMuJoCoEnv
-from dimos.simulation.gym.rewards import (
-    reward_alive,
-    reward_energy_penalty,
-    reward_smoothness,
-    reward_upright,
-    reward_velocity_tracking,
-)
 from dimos.simulation.mujoco.model import get_assets
 from dimos.utils.data import get_data
 
@@ -61,13 +54,14 @@ class Go2LocomotionEnv(DimOSMuJoCoEnv):
         self._default_angles = np.array(
             self.model.keyframe("home").qpos[7:], dtype=np.float32,
         )
+        self._default_height = float(self.model.keyframe("home").qpos[2])
 
         self._body_id = mujoco.mj_name2id(
             self.model, mujoco.mjtObj.mjOBJ_BODY, "trunk",
         )
         self._imu_site_id = self.model.site("imu").id
 
-        # Velocity command [vx, vy, yaw_rate], randomised each episode
+        # Velocity command [vx, vy, yaw_rate] — starts at zero (standing)
         self._command = np.zeros(3, dtype=np.float32)
 
         mujoco.mj_forward(self.model, self.data)
@@ -85,17 +79,20 @@ class Go2LocomotionEnv(DimOSMuJoCoEnv):
     # -- reset ---------------------------------------------------------
 
     def _reset_noise(self, np_random: np.random.Generator) -> None:
-        # Joint noise
         nq_joint = len(self._default_angles)
-        self.data.qpos[7:] += np_random.uniform(-0.05, 0.05, size=nq_joint)
-        self.data.qvel[6:] += np_random.uniform(-0.1, 0.1, size=nq_joint)
+        # Very small noise — let the robot start near a stable pose
+        self.data.qpos[7:] += np_random.uniform(-0.02, 0.02, size=nq_joint)
+        self.data.qvel[6:] += np_random.uniform(-0.05, 0.05, size=nq_joint)
 
-        # Randomise velocity command
-        self._command = np.array([
-            np_random.uniform(-1.0, 1.0),   # vx
-            np_random.uniform(-0.5, 0.5),   # vy
-            np_random.uniform(-0.5, 0.5),   # yaw_rate
-        ], dtype=np.float32)
+        # Curriculum: 70% chance of zero command (standing), 30% small velocity
+        if np_random.random() < 0.7:
+            self._command = np.zeros(3, dtype=np.float32)
+        else:
+            self._command = np.array([
+                np_random.uniform(-0.3, 0.3),
+                np_random.uniform(-0.15, 0.15),
+                np_random.uniform(-0.2, 0.2),
+            ], dtype=np.float32)
 
     # -- observation (matches Go1OnnxController.get_obs) ---------------
 
@@ -110,7 +107,7 @@ class Go2LocomotionEnv(DimOSMuJoCoEnv):
 
         last_action = self._last_action if self._last_action is not None else np.zeros(12)
 
-        # Command amplified ×2 to match existing controller
+        # Command amplified x2 to match existing controller
         command = self._command.copy()
         command[0] *= 2.0
         command[1] *= 2.0
@@ -128,25 +125,60 @@ class Go2LocomotionEnv(DimOSMuJoCoEnv):
     # -- reward --------------------------------------------------------
 
     def _get_reward(self, action: np.ndarray) -> float:
-        linvel = self.data.sensor("local_linvel").data
+        body_height = float(self.data.xpos[self._body_id][2])
         imu_xmat = self.data.site_xmat[self._imu_site_id].reshape(3, 3)
         gravity_body = imu_xmat.T @ np.array([0.0, 0.0, -1.0])
 
-        actual_vel = np.array([linvel[0], linvel[1], 0.0])
-        target_vel = np.array([self._command[0], self._command[1], 0.0])
-        body_height = float(self.data.xpos[self._body_id][2])
-
         r = 0.0
-        r += reward_velocity_tracking(actual_vel[:2], target_vel[:2], scale=2.0)
-        r += reward_upright(gravity_body) * 0.5
-        r += reward_alive(body_height, 0.15)
-        r += reward_energy_penalty(action, scale=0.005)
+
+        # 1. SURVIVAL — dominant signal: large bonus each step alive
+        r += 2.0
+
+        # 2. HEIGHT — exponential kernel, peaks at default standing height
+        height_error = body_height - self._default_height
+        r += 1.5 * np.exp(-20.0 * height_error ** 2)
+
+        # 3. UPRIGHT — reward for gravity vector aligned with body z-axis
+        # gravity_body[2] = -1 when perfectly upright, +1 when inverted
+        upright = (-gravity_body[2] + 1.0) / 2.0  # normalize to [0, 1]
+        r += 1.0 * upright
+
+        # 4. JOINT REGULARIZATION — stay near default pose
+        joint_deviation = self.data.qpos[7:] - self._default_angles
+        r -= 0.02 * float(np.sum(joint_deviation ** 2))
+
+        # 5. VELOCITY TRACKING — only meaningful once standing is learned
+        linvel = self.data.sensor("local_linvel").data
+        vel_error = np.array([
+            linvel[0] - self._command[0],
+            linvel[1] - self._command[1],
+        ])
+        r += 0.5 * np.exp(-4.0 * float(np.sum(vel_error ** 2)))
+
+        # 6. ANGULAR VELOCITY PENALTY — penalize wobbling/spinning
+        gyro = self.data.sensor("gyro").data
+        r -= 0.01 * float(np.sum(gyro ** 2))
+
+        # 7. ENERGY — very small, don't discourage exploration
+        r -= 0.0005 * float(np.sum(action ** 2))
+
+        # 8. SMOOTHNESS — small action rate penalty
         if self._last_action is not None:
-            r += reward_smoothness(action, self._last_action, scale=0.01)
+            r -= 0.005 * float(np.sum((action - self._last_action) ** 2))
+
         return r
 
     # -- termination ---------------------------------------------------
 
     def _is_terminated(self) -> bool:
         body_height = float(self.data.xpos[self._body_id][2])
-        return body_height < 0.15
+        if body_height < 0.13:
+            return True
+
+        # Also terminate if body is heavily tilted (> 70 degrees)
+        imu_xmat = self.data.site_xmat[self._imu_site_id].reshape(3, 3)
+        gravity_body = imu_xmat.T @ np.array([0.0, 0.0, -1.0])
+        if gravity_body[2] > -0.35:  # cos(70°) ≈ 0.34
+            return True
+
+        return False

@@ -5,11 +5,18 @@ Usage
     # Evaluate with interactive MuJoCo viewer (default)
     python -m dimos.simulation.gym.evaluate --env DroneHover --model models/DroneHover.zip
 
-    # Evaluate ONNX model
-    python -m dimos.simulation.gym.evaluate --env DroneHover --onnx data/mujoco_sim/drone_rl_policy.onnx
+    # Evaluate with keyboard control (DroneVelocity)
+    python -m dimos.simulation.gym.evaluate --env DroneVelocity --model models/DroneVelocity.zip --keyboard
 
     # Headless (no viewer, just print stats)
     python -m dimos.simulation.gym.evaluate --env DroneHover --model models/DroneHover.zip --headless
+
+Keyboard controls (--keyboard flag, drone envs):
+    UP/DOWN       forward / backward
+    LEFT/RIGHT    strafe left / right
+    PGUP/PGDN     ascend / descend
+    HOME/END      yaw left / yaw right
+    SPACE         stop all
 """
 
 from __future__ import annotations
@@ -41,6 +48,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--onnx", default=None, help="Path to ONNX policy file")
     p.add_argument("--episodes", type=int, default=5, help="Number of episodes")
     p.add_argument("--headless", action="store_true", help="No viewer, just print stats")
+    p.add_argument("--keyboard", action="store_true", help="Fly drone with WASD keys")
     p.add_argument("--scene", default=None, help="Scene XML path (e.g. city_scene.xml)")
     p.add_argument("--assets", nargs="*", default=None, help="Asset files (textures, meshes)")
     p.add_argument("--seed", type=int, default=42)
@@ -144,6 +152,51 @@ def _run_viewer(args, predict) -> None:
     total_reward = 0.0
     physics_steps = 0
 
+    # -- Keyboard velocity control (drone envs) --
+    # GLFW key codes (arrows + numpad don't conflict with MuJoCo viewer)
+    _KEY_UP = 265
+    _KEY_DOWN = 264
+    _KEY_LEFT = 263
+    _KEY_RIGHT = 262
+    _KEY_PGUP = 266
+    _KEY_PGDN = 267
+    _KEY_HOME = 268
+    _KEY_END = 269
+    _KEY_SPACE = 32
+
+    keyboard_cmd = np.zeros(4, dtype=np.float32)  # [vx, vy, vz, yaw_rate]
+    use_keyboard = args.keyboard and args.env in ("DroneHover", "DroneVelocity")
+    cmd_speed = 1.0
+
+    def key_callback(keycode: int) -> None:
+        nonlocal keyboard_cmd
+        if keycode == _KEY_UP:
+            keyboard_cmd[0] = cmd_speed
+        elif keycode == _KEY_DOWN:
+            keyboard_cmd[0] = -cmd_speed
+        elif keycode == _KEY_LEFT:
+            keyboard_cmd[1] = -cmd_speed
+        elif keycode == _KEY_RIGHT:
+            keyboard_cmd[1] = cmd_speed
+        elif keycode == _KEY_PGUP:
+            keyboard_cmd[2] = cmd_speed
+        elif keycode == _KEY_PGDN:
+            keyboard_cmd[2] = -cmd_speed
+        elif keycode == _KEY_HOME:
+            keyboard_cmd[3] = -0.5
+        elif keycode == _KEY_END:
+            keyboard_cmd[3] = 0.5
+        elif keycode == _KEY_SPACE:
+            keyboard_cmd[:] = 0.0
+
+    if use_keyboard:
+        print("Keyboard control enabled:")
+        print("  UP/DOWN    = forward / backward")
+        print("  LEFT/RIGHT = strafe left / right")
+        print("  PGUP/PGDN  = ascend / descend")
+        print("  HOME/END   = yaw left / yaw right")
+        print("  SPACE      = stop all")
+
     def controller(m, d):
         """Called by the viewer at each physics step — we only act every
         ``env._n_substeps`` steps to match control frequency."""
@@ -154,6 +207,10 @@ def _run_viewer(args, predict) -> None:
         # Only run the policy at control frequency
         if physics_steps % env._n_substeps != 0:
             return
+
+        # Override env velocity command with keyboard input
+        if use_keyboard and hasattr(env, "_cmd"):
+            env._cmd[:] = keyboard_cmd
 
         action = predict(obs)
         action = np.clip(action, env.action_space.low, env.action_space.high)
@@ -178,7 +235,11 @@ def _run_viewer(args, predict) -> None:
 
     mujoco.set_mjcb_control(controller)
 
-    with mujoco.viewer.launch_passive(model, data) as viewer:
+    viewer_kwargs = {}
+    if use_keyboard:
+        viewer_kwargs["key_callback"] = key_callback
+
+    with mujoco.viewer.launch_passive(model, data, **viewer_kwargs) as viewer:
         while viewer.is_running() and episode < args.episodes:
             step_start = time.time()
             mujoco.mj_step(model, data)

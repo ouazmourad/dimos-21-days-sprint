@@ -8,13 +8,6 @@ import mujoco
 import numpy as np
 
 from dimos.simulation.gym.base_env import DimOSMuJoCoEnv
-from dimos.simulation.gym.rewards import (
-    reward_alive,
-    reward_altitude_tracking,
-    reward_energy_penalty,
-    reward_smoothness,
-    reward_upright,
-)
 from dimos.simulation.mujoco.model import get_assets
 from dimos.utils.data import get_data
 
@@ -93,8 +86,9 @@ class G1StandingEnv(DimOSMuJoCoEnv):
 
     def _reset_noise(self, np_random: np.random.Generator) -> None:
         nq_joint = len(self._default_angles)
-        self.data.qpos[7:] += np_random.uniform(-0.02, 0.02, size=nq_joint)
-        self.data.qvel[6:] += np_random.uniform(-0.05, 0.05, size=nq_joint)
+        # Minimal noise — humanoid balance is fragile
+        self.data.qpos[7:] += np_random.uniform(-0.01, 0.01, size=nq_joint)
+        self.data.qvel[6:] += np_random.uniform(-0.02, 0.02, size=nq_joint)
         self._phase = np.array([0.0, np.pi])
 
     # -- observation (matches G1OnnxController.get_obs) ----------------
@@ -112,7 +106,6 @@ class G1StandingEnv(DimOSMuJoCoEnv):
 
         phase = np.concatenate([np.cos(self._phase), np.sin(self._phase)])
 
-        # Command (with drift compensation matching existing controller)
         command = self._command.copy()
 
         return np.concatenate([
@@ -134,19 +127,54 @@ class G1StandingEnv(DimOSMuJoCoEnv):
         pelvis_height = float(self.data.xpos[self._pelvis_id][2])
 
         r = 0.0
-        r += reward_upright(gravity_body) * 1.0
-        r += reward_alive(pelvis_height, 0.4)
-        r += reward_altitude_tracking(pelvis_height, self._target_height, scale=2.0)
-        r += reward_energy_penalty(action, scale=0.003)
+
+        # 1. SURVIVAL — dominant signal: large bonus each step alive
+        r += 3.0
+
+        # 2. HEIGHT — exponential kernel, peaks at target standing height
+        height_error = pelvis_height - self._target_height
+        r += 2.0 * np.exp(-15.0 * height_error ** 2)
+
+        # 3. UPRIGHT — reward for gravity aligned with pelvis z-axis
+        # gravity_body[2] = -1 when perfectly upright, +1 when inverted
+        upright = (-gravity_body[2] + 1.0) / 2.0  # normalize to [0, 1]
+        r += 2.0 * upright
+
+        # 4. JOINT REGULARIZATION — stay near default pose (critical for humanoid)
+        joint_deviation = self.data.qpos[7:] - self._default_angles
+        r -= 0.01 * float(np.sum(joint_deviation ** 2))
+
+        # 5. ANGULAR VELOCITY PENALTY — penalize wobbling
+        gyro = self.data.sensor("gyro_pelvis").data
+        r -= 0.02 * float(np.sum(gyro ** 2))
+
+        # 6. LINEAR VELOCITY PENALTY — should stay in place
+        linvel = self.data.sensor("local_linvel_pelvis").data
+        r -= 0.02 * float(np.sum(linvel ** 2))
+
+        # 7. ENERGY — very small penalty
+        r -= 0.0005 * float(np.sum(action ** 2))
+
+        # 8. SMOOTHNESS — small action rate penalty
         if self._last_action is not None:
-            r += reward_smoothness(action, self._last_action, scale=0.01)
+            r -= 0.005 * float(np.sum((action - self._last_action) ** 2))
+
         return r
 
     # -- termination ---------------------------------------------------
 
     def _is_terminated(self) -> bool:
         pelvis_height = float(self.data.xpos[self._pelvis_id][2])
-        return pelvis_height < 0.4
+        if pelvis_height < 0.35:
+            return True
+
+        # Terminate if heavily tilted
+        imu_xmat = self.data.site_xmat[self._imu_site_id].reshape(3, 3)
+        gravity_body = imu_xmat.T @ np.array([0.0, 0.0, -1.0])
+        if gravity_body[2] > -0.3:  # > ~72 degrees tilt
+            return True
+
+        return False
 
     # -- step override for phase update --------------------------------
 
