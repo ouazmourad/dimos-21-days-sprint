@@ -18,6 +18,7 @@ class TelephoneDescriber(Module):
     telephone_out: Out[str]
     transcript: Out[str]
 
+    vlm_rpc: str = "VLMAgent.query"
     rpc_calls: list[str] = ["VLMAgent.query"]
 
     @rpc
@@ -34,7 +35,7 @@ class TelephoneDescriber(Module):
         logger.info("[DESCRIBER] Received DESCRIBE command, querying VLM...")
 
         try:
-            vlm_query = self.get_rpc_calls("VLMAgent.query")
+            vlm_query = self.get_rpc_calls(self.vlm_rpc)
         except Exception:
             logger.error("VLMAgent not connected")
             return

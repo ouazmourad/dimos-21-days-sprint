@@ -113,8 +113,15 @@ class GameController(Module[GameControllerConfig]):
             response = judge.invoke(prompt)
             content = response.content if hasattr(response, "content") else str(response)
 
+            # Strip markdown code fences if present (```json ... ```)
+            text = content.strip()
+            if text.startswith("```"):
+                lines = text.split("\n")
+                lines = [l for l in lines if not l.strip().startswith("```")]
+                text = "\n".join(lines).strip()
+
             try:
-                score = json.loads(content)
+                score = json.loads(text)
             except json.JSONDecodeError:
                 score = {"raw_response": content}
 

@@ -24,6 +24,7 @@ class TelephoneSeeker(Module):
     odom: In[PoseStamped]
     search_result: Out[str]
 
+    vlm_rpc: str = "VLMAgent.query"
     rpc_calls: list[str] = [
         "VLMAgent.query",
         "NavigationInterface.set_goal",
@@ -93,7 +94,7 @@ class TelephoneSeeker(Module):
 
         # Step 3: Verify with VLM
         try:
-            vlm_query = self.get_rpc_calls("VLMAgent.query")
+            vlm_query = self.get_rpc_calls(self.vlm_rpc)
             verdict = vlm_query(
                 f"You are playing a game of telephone. Someone described an "
                 f'object as: "{description}"\n\n'

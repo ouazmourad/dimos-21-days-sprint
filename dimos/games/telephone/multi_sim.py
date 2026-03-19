@@ -78,21 +78,37 @@ class MultiRobotMujocoConnection(Module[MultiSimConfig]):
         cfg = copy.deepcopy(self.config.g)
         cfg.mujoco_start_pos = ROBOT_POSITIONS[robot_id]
         cfg.simulation = True
+        # Use low resolution to fit within the default UDP receive buffer
+        # (212 KB). 160x120 RGB = 57,600 bytes — well within limits.
+        cfg.mujoco_video_width = 160
+        cfg.mujoco_video_height = 120
         return cfg
 
     @rpc
     def start(self) -> None:
         super().start()
 
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
         from dimos.robot.unitree.mujoco_connection import MujocoConnection
 
-        for robot_id in ("a", "b", "c"):
+        # Create and start all 3 connections in parallel to stay within
+        # the 120 s RPC timeout (~50 s each sequentially = 150 s > 120 s).
+        def _init_robot(robot_id: str) -> tuple[str, MujocoConnection]:
             cfg = self._make_config(robot_id)
             conn = MujocoConnection(cfg)
             conn.start()
-            self._connections[robot_id] = conn
+            return robot_id, conn
 
-            # Wire streams
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futures = {pool.submit(_init_robot, rid): rid for rid in ("a", "b", "c")}
+            for future in as_completed(futures):
+                robot_id, conn = future.result()
+                self._connections[robot_id] = conn
+                logger.info(f"[MULTI_SIM] Robot {robot_id.upper()} connection ready")
+
+        # Wire streams after all connections are up
+        for robot_id, conn in self._connections.items():
             color_out = getattr(self, f"{robot_id}_color_image")
             odom_out = getattr(self, f"{robot_id}_odom")
             cmd_in = getattr(self, f"{robot_id}_cmd_vel")
@@ -106,7 +122,6 @@ class MultiRobotMujocoConnection(Module[MultiSimConfig]):
                 lambda twist, c=conn: c.move(twist)
             )))
 
-            # Camera info publishing thread
             t = Thread(
                 target=self._publish_camera_info_loop,
                 args=(conn, camera_out),

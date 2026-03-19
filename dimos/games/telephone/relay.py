@@ -19,6 +19,7 @@ class TelephoneRelay(Module):
     transcript: Out[str]
     color_image: In[Image]
 
+    vlm_rpc: str = "VLMAgent.query"
     rpc_calls: list[str] = ["VLMAgent.query"]
 
     @rpc
@@ -32,7 +33,7 @@ class TelephoneRelay(Module):
         logger.info(f"[RELAY] Received description: {description}")
 
         try:
-            vlm_query = self.get_rpc_calls("VLMAgent.query")
+            vlm_query = self.get_rpc_calls(self.vlm_rpc)
         except Exception:
             logger.error("VLMAgent not connected")
             self.telephone_out.publish(description)
