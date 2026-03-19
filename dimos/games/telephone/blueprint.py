@@ -41,8 +41,17 @@ logger = setup_logger()
 # =====================================================================
 
 
+TELEPHONE_SYSTEM_PROMPT = (
+    "You are a vision AI playing a game of Robot Telephone. "
+    "You can see through a camera mounted on a simulated robot in a MuJoCo scene. "
+    "When shown an image, describe the objects you see in vivid detail. "
+    "Focus on colors, shapes, sizes, and spatial relationships. "
+    "Be creative and descriptive. Never refuse to describe what you see."
+)
+
+
 class _TelephoneVLM(VLMAgent):
-    """VLMAgent subclass that adds visual_query RPC using the latest camera frame."""
+    """VLMAgent subclass with game-specific system prompt and visual_query RPC."""
 
     @rpc
     def visual_query(self, query: str) -> str:
@@ -73,9 +82,10 @@ class DescriberA(TelephoneDescriber):
 
 
 class RelayB(TelephoneRelay):
-    """Relay module scoped to Robot B."""
-    vlm_rpc: str = "VLMAgentB.visual_query"
-    rpc_calls: list[str] = ["VLMAgentB.visual_query"]
+    """Relay module scoped to Robot B. Uses text-only query since B
+    just reinterprets the description — no image needed."""
+    vlm_rpc: str = "VLMAgentB.query"
+    rpc_calls: list[str] = ["VLMAgentB.query"]
 
 
 class SeekerC(TelephoneSeeker):
@@ -101,13 +111,13 @@ def build_telephone_game(
     sim = multi_robot_sim()
     controller = game_controller(judge_model=judge_model)
 
-    vlm_a = VLMAgentA.blueprint(model=vlm_model)
+    vlm_a = VLMAgentA.blueprint(model=vlm_model, system_prompt=TELEPHONE_SYSTEM_PROMPT)
     describer = DescriberA.blueprint()
 
-    vlm_b = VLMAgentB.blueprint(model=vlm_model)
+    vlm_b = VLMAgentB.blueprint(model=vlm_model, system_prompt=TELEPHONE_SYSTEM_PROMPT)
     relay = RelayB.blueprint()
 
-    vlm_c = VLMAgentC.blueprint(model=vlm_model)
+    vlm_c = VLMAgentC.blueprint(model=vlm_model, system_prompt=TELEPHONE_SYSTEM_PROMPT)
     seeker = SeekerC.blueprint()
 
     game = autoconnect(

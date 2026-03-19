@@ -1,9 +1,11 @@
-"""MultiRobotMujocoConnection: single MuJoCo scene with 3 robots.
+"""MultiRobotMujocoConnection: MuJoCo scenes for the telephone game.
 
-Uses Option B (MVP): 3 separate MujocoConnection instances sharing the
-same scene XML but with different spawn positions. Each robot runs its
-own MuJoCo subprocess. Robots communicate via text streams only, so
-shared physics is not required.
+Only Robot A and Robot C need their own simulation (A sees objects to
+describe, C searches for them). Robot B is a text relay — it shares
+Robot A's camera feed for visual context but doesn't need its own sim.
+
+This keeps the memory footprint to 2 MuJoCo subprocesses instead of 3,
+which is critical on 16 GB systems.
 """
 
 import copy
@@ -28,11 +30,10 @@ from dimos.utils.logging_config import setup_logger
 logger = setup_logger()
 
 
-# Spawn positions for 3 robots in 3 rooms
+# Spawn positions for robots (both on the default scene floor)
 ROBOT_POSITIONS = {
-    "a": "0.0, 0.0",   # Room A center
-    "b": "10.0, 0.0",  # Room B center
-    "c": "20.0, 0.0",  # Room C center
+    "a": "-1.0, 1.0",  # Robot A — default position, faces objects
+    "c": "1.0, -1.0",  # Robot C — different angle, same scene
 }
 
 
@@ -41,10 +42,10 @@ class MultiSimConfig(ModuleConfig):
 
 
 class MultiRobotMujocoConnection(Module[MultiSimConfig]):
-    """Single module exposing 3 robots (A, B, C) via prefixed streams.
+    """Module exposing 3 robots' streams using only 2 MuJoCo processes.
 
-    Internally creates 3 MujocoConnection instances, each with a
-    different start position. Each runs its own MuJoCo subprocess.
+    Robot A and C each get their own simulation. Robot B shares Robot A's
+    camera feed (it only needs visual context for the text relay).
     """
 
     default_config = MultiSimConfig
@@ -55,11 +56,8 @@ class MultiRobotMujocoConnection(Module[MultiSimConfig]):
     a_odom: Out[PoseStamped]
     a_camera_info: Out[CameraInfo]
 
-    # Robot B streams
-    b_cmd_vel: In[Twist]
+    # Robot B shares A's camera
     b_color_image: Out[Image]
-    b_odom: Out[PoseStamped]
-    b_camera_info: Out[CameraInfo]
 
     # Robot C streams
     c_cmd_vel: In[Twist]
@@ -78,8 +76,6 @@ class MultiRobotMujocoConnection(Module[MultiSimConfig]):
         cfg = copy.deepcopy(self.config.g)
         cfg.mujoco_start_pos = ROBOT_POSITIONS[robot_id]
         cfg.simulation = True
-        # Force low performance tier for multi-robot — 3 MuJoCo processes
-        # running simultaneously need reduced resolution & FPS.
         cfg.performance_tier = "low"
         cfg.resolve_performance_tier()
         return cfg
@@ -88,53 +84,50 @@ class MultiRobotMujocoConnection(Module[MultiSimConfig]):
     def start(self) -> None:
         super().start()
 
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
         from dimos.robot.unitree.mujoco_connection import MujocoConnection
 
-        # Create and start all 3 connections in parallel to stay within
-        # the 120 s RPC timeout (~50 s each sequentially = 150 s > 120 s).
-        def _init_robot(robot_id: str) -> tuple[str, MujocoConnection]:
+        # Launch sequentially to avoid memory spikes on 16 GB systems
+        for robot_id in ("a", "c"):
+            logger.info(f"[MULTI_SIM] Starting Robot {robot_id.upper()} simulation...")
             cfg = self._make_config(robot_id)
             conn = MujocoConnection(cfg)
             conn.start()
-            return robot_id, conn
+            self._connections[robot_id] = conn
+            logger.info(f"[MULTI_SIM] Robot {robot_id.upper()} ready")
 
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            futures = {pool.submit(_init_robot, rid): rid for rid in ("a", "b", "c")}
-            for future in as_completed(futures):
-                robot_id, conn = future.result()
-                self._connections[robot_id] = conn
-                logger.info(f"[MULTI_SIM] Robot {robot_id.upper()} connection ready")
+        # Wire Robot A streams
+        conn_a = self._connections["a"]
+        self._disposables.add(conn_a.video_stream().subscribe(self.a_color_image.publish))
+        # Robot B shares A's camera feed
+        self._disposables.add(conn_a.video_stream().subscribe(self.b_color_image.publish))
+        self._disposables.add(conn_a.odom_stream().subscribe(
+            lambda odom: self.a_odom.publish(self._sim_odom_to_pose(odom))
+        ))
+        self._disposables.add(Disposable(self.a_cmd_vel.subscribe(
+            lambda twist: conn_a.move(twist)
+        )))
 
-        # Wire streams after all connections are up
-        for robot_id, conn in self._connections.items():
-            color_out = getattr(self, f"{robot_id}_color_image")
-            odom_out = getattr(self, f"{robot_id}_odom")
-            cmd_in = getattr(self, f"{robot_id}_cmd_vel")
-            camera_out = getattr(self, f"{robot_id}_camera_info")
+        # Wire Robot C streams
+        conn_c = self._connections["c"]
+        self._disposables.add(conn_c.video_stream().subscribe(self.c_color_image.publish))
+        self._disposables.add(conn_c.odom_stream().subscribe(
+            lambda odom: self.c_odom.publish(self._sim_odom_to_pose(odom))
+        ))
+        self._disposables.add(Disposable(self.c_cmd_vel.subscribe(
+            lambda twist: conn_c.move(twist)
+        )))
 
-            self._disposables.add(conn.video_stream().subscribe(color_out.publish))
-            self._disposables.add(conn.odom_stream().subscribe(
-                lambda odom, out=odom_out: out.publish(self._sim_odom_to_pose(odom))
-            ))
-            self._disposables.add(Disposable(cmd_in.subscribe(
-                lambda twist, c=conn: c.move(twist)
-            )))
-
-            t = Thread(
-                target=self._publish_camera_info_loop,
-                args=(conn, camera_out),
-                daemon=True,
-            )
+        # Camera info threads
+        for rid, conn in self._connections.items():
+            cam_out = getattr(self, f"{rid}_camera_info")
+            t = Thread(target=self._publish_camera_info_loop, args=(conn, cam_out), daemon=True)
             t.start()
             self._camera_threads.append(t)
 
-        logger.info("[MULTI_SIM] All 3 robot connections started")
+        logger.info("[MULTI_SIM] All robot connections started (2 sims: A + C)")
 
     @staticmethod
     def _sim_odom_to_pose(odom: SimOdometry) -> PoseStamped:
-        """Convert simulation odometry to PoseStamped (same as G1SimConnection)."""
         return PoseStamped(
             ts=odom.ts,
             frame_id=odom.frame_id,
