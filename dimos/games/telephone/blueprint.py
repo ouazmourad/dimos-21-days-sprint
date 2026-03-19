@@ -21,13 +21,11 @@ from typing import TYPE_CHECKING
 from dimos.agents.vlm_agent import VLMAgent
 from dimos.core.blueprints import autoconnect
 from dimos.core.core import rpc
-from dimos.core.transport import pLCMTransport
 from dimos.games.telephone.controller import GameController, game_controller
 from dimos.games.telephone.describer import TelephoneDescriber
 from dimos.games.telephone.multi_sim import MultiRobotMujocoConnection, multi_robot_sim
 from dimos.games.telephone.relay import TelephoneRelay
 from dimos.games.telephone.seeker import TelephoneSeeker
-from dimos.msgs.sensor_msgs.Image import Image
 from dimos.utils.logging_config import setup_logger
 
 if TYPE_CHECKING:
@@ -119,16 +117,6 @@ def build_telephone_game(
         vlm_b, relay,
         vlm_c, seeker,
     )
-
-    # Force pickled transports for image streams to handle large frames.
-    # The default LCMTransport for Image drops frames when the kernel
-    # UDP receive buffer is too small (needs sudo to increase).
-    # pLCMTransport uses pickle + fragmentation which works reliably.
-    game = game.transports({
-        ("a_color_image", Image): pLCMTransport("/a_color_image_p"),
-        ("b_color_image", Image): pLCMTransport("/b_color_image_p"),
-        ("c_color_image", Image): pLCMTransport("/c_color_image_p"),
-    })
 
     # Wire each robot's VLM + module to the correct sim camera via remappings.
     # Remapping format: (ModuleClass, "original_stream_name", "new_stream_name")

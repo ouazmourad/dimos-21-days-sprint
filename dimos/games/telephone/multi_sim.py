@@ -78,10 +78,10 @@ class MultiRobotMujocoConnection(Module[MultiSimConfig]):
         cfg = copy.deepcopy(self.config.g)
         cfg.mujoco_start_pos = ROBOT_POSITIONS[robot_id]
         cfg.simulation = True
-        # Use low resolution to fit within the default UDP receive buffer
-        # (212 KB). 160x120 RGB = 57,600 bytes — well within limits.
-        cfg.mujoco_video_width = 160
-        cfg.mujoco_video_height = 120
+        # Force low performance tier for multi-robot — 3 MuJoCo processes
+        # running simultaneously need reduced resolution & FPS.
+        cfg.performance_tier = "low"
+        cfg.resolve_performance_tier()
         return cfg
 
     @rpc
