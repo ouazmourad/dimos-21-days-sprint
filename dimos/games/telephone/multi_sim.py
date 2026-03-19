@@ -30,10 +30,11 @@ from dimos.utils.logging_config import setup_logger
 logger = setup_logger()
 
 
-# Spawn positions for robots (both on the default scene floor)
+# Spawn positions for robots — far apart on the office floor (15x15)
+# so they see different parts of the room.
 ROBOT_POSITIONS = {
-    "a": "-1.0, 1.0",  # Robot A — default position, faces objects
-    "c": "1.0, -1.0",  # Robot C — different angle, same scene
+    "a": "-3.0, 3.0",  # Robot A — corner near curtain/window area
+    "c": "3.0, -3.0",  # Robot C — opposite corner near desk/shelving
 }
 
 
