@@ -30,11 +30,11 @@ from dimos.utils.logging_config import setup_logger
 logger = setup_logger()
 
 
-# Spawn positions for robots — far apart on the office floor (15x15)
+# Spawn configs for robots — far apart on the office floor (15x15)
 # so they see different parts of the room.
-ROBOT_POSITIONS = {
-    "a": "-3.0, 3.0",  # Robot A — corner near curtain/window area
-    "c": "3.0, -3.0",  # Robot C — opposite corner near desk/shelving
+ROBOT_SPAWN = {
+    "a": {"pos": "-3.0, 3.0", "yaw": 0.0},     # Robot A — default heading
+    "c": {"pos": "3.0, -3.0", "yaw": 135.0},    # Robot C — rotated to face tables/chairs
 }
 
 
@@ -75,7 +75,9 @@ class MultiRobotMujocoConnection(Module[MultiSimConfig]):
     def _make_config(self, robot_id: str) -> GlobalConfig:
         """Create a GlobalConfig copy with the given robot's start position."""
         cfg = copy.deepcopy(self.config.g)
-        cfg.mujoco_start_pos = ROBOT_POSITIONS[robot_id]
+        spawn = ROBOT_SPAWN[robot_id]
+        cfg.mujoco_start_pos = spawn["pos"]
+        cfg.mujoco_start_yaw = spawn["yaw"]
         cfg.simulation = True
         cfg.performance_tier = "low"
         cfg.resolve_performance_tier()

@@ -120,6 +120,13 @@ def _run_simulation(config: GlobalConfig, shm: ShmReader) -> None:
 
     data.qpos[0:3] = [pos[0], pos[1], z]
 
+    # Apply initial heading (yaw) as a quaternion rotation around Z
+    yaw_deg = config.mujoco_start_yaw
+    if yaw_deg != 0.0:
+        import math
+        yaw = math.radians(yaw_deg)
+        data.qpos[3:7] = [math.cos(yaw / 2), 0, 0, math.sin(yaw / 2)]
+
     mujoco.mj_forward(model, data)
 
     camera_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, "head_camera")

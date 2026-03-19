@@ -59,6 +59,7 @@ class GlobalConfig(BaseSettings):
     mujoco_global_costmap_from_occupancy: str | None = None
     mujoco_global_map_from_pointcloud: str | None = None
     mujoco_start_pos: str = "-1.0, 1.0"
+    mujoco_start_yaw: float = 0.0  # initial heading in degrees (0 = default)
     mujoco_steps_per_frame: int = 7
     mujoco_video_fps: int = 20
     mujoco_lidar_fps: int = 2
