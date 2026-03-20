@@ -68,7 +68,7 @@ class SimpleNavSkill(Module):
         Returns:
             Status message.
         """
-        self._send_velocity(0.4, 0.0, duration)
+        self._send_velocity(0.8, 0.0, duration)
         logger.info(f"[NAV] Moving forward for {duration}s")
         return f"Moving forward for {duration} seconds."
 
@@ -96,7 +96,7 @@ class SimpleNavSkill(Module):
         Returns:
             Status message.
         """
-        self._send_velocity(0.1, 0.5, duration)
+        self._send_velocity(0.3, 0.8, duration)
         logger.info(f"[NAV] Turning left for {duration}s")
         return f"Turning left for {duration} seconds."
 
@@ -110,7 +110,7 @@ class SimpleNavSkill(Module):
         Returns:
             Status message.
         """
-        self._send_velocity(0.1, -0.5, duration)
+        self._send_velocity(0.3, -0.8, duration)
         logger.info(f"[NAV] Turning right for {duration}s")
         return f"Turning right for {duration} seconds."
 
