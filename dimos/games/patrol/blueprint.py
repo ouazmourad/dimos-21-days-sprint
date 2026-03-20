@@ -198,7 +198,7 @@ class PatrolObserverCharlie(PatrolObserver):
 # Blueprint composition
 # ═══════════════════════════════════════════════════════════════════
 
-def build_patrol(model: str = "anthropic/claude-sonnet-4-20250514") -> Blueprint:
+def build_patrol(model: str = "claude-sonnet-4-20250514") -> Blueprint:
     """Build the collaborative patrol blueprint.
 
     Args:
@@ -270,15 +270,12 @@ def build_patrol(model: str = "anthropic/claude-sonnet-4-20250514") -> Blueprint
         (RadioBridge, "inject_to_a", "a_human_input"),
         (RadioBridge, "inject_to_c", "c_human_input"),
 
-        # ── Coordinator status streams ──
-        (PatrolAgentAlpha, "agent", "status_a"),
-        (PatrolAgentCharlie, "agent", "status_c"),
     ])
 
     return game
 
 
-def run_patrol(model: str = "anthropic/claude-sonnet-4-20250514") -> None:
+def run_patrol(model: str = "claude-sonnet-4-20250514") -> None:
     """Run the collaborative patrol system."""
     game = build_patrol(model=model)
     coordinator = game.build()

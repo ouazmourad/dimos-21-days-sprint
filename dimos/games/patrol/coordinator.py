@@ -11,9 +11,8 @@ from typing import Any
 from dimos.agents.annotation import skill
 from dimos.core.core import rpc
 from dimos.core.module import Module
-from dimos.core.stream import In, Out
+from dimos.core.stream import Out
 from dimos.utils.logging_config import setup_logger
-from reactivex.disposable import Disposable
 
 logger = setup_logger()
 
@@ -29,8 +28,6 @@ class PatrolCoordinator(Module):
     """Orchestrates patrol missions for two robots."""
 
     mission_command: Out[str]
-    status_a: In[str]
-    status_c: In[str]
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -41,12 +38,6 @@ class PatrolCoordinator(Module):
     @rpc
     def start(self) -> None:
         super().start()
-        self._disposables.add(Disposable(self.status_a.subscribe(
-            lambda msg: self._log("Alpha", msg)
-        )))
-        self._disposables.add(Disposable(self.status_c.subscribe(
-            lambda msg: self._log("Charlie", msg)
-        )))
 
     def _log(self, source: str, message: str) -> None:
         entry = MissionEntry(timestamp=time.time(), source=source, message=message)
