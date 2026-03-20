@@ -198,7 +198,7 @@ class PatrolObserverCharlie(PatrolObserver):
 # Blueprint composition
 # ═══════════════════════════════════════════════════════════════════
 
-def build_patrol(model: str = "gpt-4o") -> Blueprint:
+def build_patrol(model: str = "anthropic/claude-sonnet-4-20250514") -> Blueprint:
     """Build the collaborative patrol blueprint.
 
     Args:
@@ -278,7 +278,7 @@ def build_patrol(model: str = "gpt-4o") -> Blueprint:
     return game
 
 
-def run_patrol(model: str = "gpt-4o") -> None:
+def run_patrol(model: str = "anthropic/claude-sonnet-4-20250514") -> None:
     """Run the collaborative patrol system."""
     game = build_patrol(model=model)
     coordinator = game.build()

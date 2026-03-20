@@ -109,7 +109,7 @@ def _run(t0):
     from dimos.games.patrol.blueprint import build_patrol
     from dimos.games.patrol.coordinator import PatrolCoordinator
 
-    game = build_patrol(model="gpt-4o")
+    game = build_patrol()
     timed(t0, f"{GREEN}Blueprint composed{RESET}  {DIM}13 modules | 2 MuJoCo sims | 2 Agents{RESET}")
 
     # ── Launch with spinner ──
