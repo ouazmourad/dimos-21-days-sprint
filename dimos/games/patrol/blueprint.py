@@ -211,6 +211,10 @@ def build_patrol(model: str = "claude-sonnet-4-20250514") -> Blueprint:
     coordinator = patrol_coordinator()
     bridge = radio_bridge()
 
+    # Force minimal workers to save RAM on 16GB systems
+    from dimos.core.global_config import global_config
+    global_config.n_workers = 1
+
     # Robot Alpha stack
     vlm_a = VLMAgentAlpha.blueprint(model=model, system_prompt=PATROL_VLM_PROMPT)
     agent_a = PatrolAgentAlpha.blueprint(model=model, system_prompt=ALPHA_PROMPT)
