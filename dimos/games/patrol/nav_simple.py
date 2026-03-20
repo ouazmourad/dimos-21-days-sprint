@@ -59,16 +59,16 @@ class SimpleNavSkill(Module):
         self._moving = False
 
     @skill
-    def move_forward(self, duration: float = 2.0) -> str:
+    def move_forward(self, duration: float = 5.0) -> str:
         """Walk forward for a specified duration in seconds.
 
         Args:
-            duration: How long to walk forward (default 2 seconds).
+            duration: How long to walk forward (default 5 seconds).
 
         Returns:
             Status message.
         """
-        self._send_velocity(0.3, 0.0, duration)
+        self._send_velocity(0.4, 0.0, duration)
         logger.info(f"[NAV] Moving forward for {duration}s")
         return f"Moving forward for {duration} seconds."
 
@@ -87,30 +87,30 @@ class SimpleNavSkill(Module):
         return f"Moving backward for {duration} seconds."
 
     @skill
-    def turn_left(self, duration: float = 1.5) -> str:
+    def turn_left(self, duration: float = 2.0) -> str:
         """Turn left (counterclockwise) for a specified duration.
 
         Args:
-            duration: How long to turn (default 1.5 seconds, roughly 90 degrees).
+            duration: How long to turn (default 2 seconds).
 
         Returns:
             Status message.
         """
-        self._send_velocity(0.0, 0.5, duration)
+        self._send_velocity(0.1, 0.5, duration)
         logger.info(f"[NAV] Turning left for {duration}s")
         return f"Turning left for {duration} seconds."
 
     @skill
-    def turn_right(self, duration: float = 1.5) -> str:
+    def turn_right(self, duration: float = 2.0) -> str:
         """Turn right (clockwise) for a specified duration.
 
         Args:
-            duration: How long to turn (default 1.5 seconds, roughly 90 degrees).
+            duration: How long to turn (default 2 seconds).
 
         Returns:
             Status message.
         """
-        self._send_velocity(0.0, -0.5, duration)
+        self._send_velocity(0.1, -0.5, duration)
         logger.info(f"[NAV] Turning right for {duration}s")
         return f"Turning right for {duration} seconds."
 
