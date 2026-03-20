@@ -1,18 +1,18 @@
-"""Collaborative Patrol Demo — two autonomous robots patrolling and communicating.
+"""Collaborative Patrol Demo — 80-second demo after launch.
 
 Prerequisites:
     sudo ip link set lo multicast on
-    sudo ip route add 224.0.0.0/4 dev lo
+    sudo ip route add 224.0.0.0/4 dev lo 2>/dev/null
     sudo sysctl -w net.core.rmem_max=67108864
     sudo sysctl -w net.core.rmem_default=67108864
-    export OPENAI_API_KEY="sk-..."
 
     CI=1 .venv/bin/python dimos/games/patrol/demo.py
 """
 
 import itertools
+import os
+import subprocess
 import sys
-import textwrap
 import threading
 import time
 
@@ -61,64 +61,49 @@ def spinner(msg, done_event, t0):
         sys.stdout.write(f"{CLEAR_LINE}  {BOLD}{CYAN}{f}{RESET} {msg} {DIM}[{elapsed:.0f}s]{RESET}")
         sys.stdout.flush()
         time.sleep(0.08)
-    sys.stdout.write(f"{CLEAR_LINE}")
+    sys.stdout.write(CLEAR_LINE)
     sys.stdout.flush()
 
 
 def progress_bar(pct, width=30, color=CYAN):
     filled = int(width * pct)
-    bar = f"{BOLD}{color}{'█' * filled}{BR_BLACK}{'░' * (width - filled)}{RESET}"
-    return f"  {bar} {pct * 100:3.0f}%"
+    return f"  {BOLD}{color}{'█' * filled}{BR_BLACK}{'░' * (width - filled)}{RESET} {pct * 100:3.0f}%"
+
+
+def _preflight():
+    for name in ["openclaw-gateway", "snap-store", "gnome-software"]:
+        try:
+            subprocess.run(["pkill", "-f", name], capture_output=True, timeout=3)
+        except Exception:
+            pass
+
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    gb = int(line.split()[1]) / 1024 / 1024
+                    if gb < 8:
+                        print(f"  {YELLOW}WARNING: {gb:.1f} GB RAM. Close browsers for best results.{RESET}")
+                    else:
+                        print(f"  {BR_GREEN}RAM: {gb:.1f} GB available{RESET}")
+                    break
+    except Exception:
+        pass
 
 
 def main():
     t0 = time.time()
     print(HIDE_CURSOR, end="")
-
     try:
         _run(t0)
     finally:
         print(SHOW_CURSOR, end="")
 
 
-def _preflight():
-    """Free RAM by killing non-essential processes and verify enough available."""
-    import os
-    import signal
-    import subprocess
-
-    # Kill known memory hogs that aren't needed for the demo
-    for proc_name in ["openclaw-gateway", "snap-store", "gnome-software"]:
-        try:
-            result = subprocess.run(
-                ["pkill", "-f", proc_name], capture_output=True, timeout=3
-            )
-        except Exception:
-            pass
-
-    # Check available RAM
-    try:
-        with open("/proc/meminfo") as f:
-            for line in f:
-                if line.startswith("MemAvailable:"):
-                    avail_kb = int(line.split()[1])
-                    avail_gb = avail_kb / 1024 / 1024
-                    if avail_gb < 8:
-                        print(f"  {YELLOW}WARNING: Only {avail_gb:.1f} GB RAM available.{RESET}")
-                        print(f"  {YELLOW}Close browsers and heavy apps for best results.{RESET}")
-                        print(f"  {DIM}Need ~8 GB free for 2 MuJoCo sims + 2 LLM agents.{RESET}")
-                        print()
-                    else:
-                        print(f"  {BR_GREEN}RAM: {avail_gb:.1f} GB available{RESET}")
-                    break
-    except Exception:
-        pass
-
-
 def _run(t0):
     _preflight()
 
-    # ── Title ──
+    # ── Title (0-3s) ──
     print()
     print(hline("═", CYAN))
     print()
@@ -127,7 +112,6 @@ def _run(t0):
     print()
     print(hline("═", CYAN))
     print()
-    time.sleep(0.8)
 
     print(f"  {BOLD}SYSTEM{RESET}")
     print(f"  {BR_BLACK}{'─' * 40}{RESET}")
@@ -136,9 +120,9 @@ def _run(t0):
     print(f"  {GREEN}Radio{RESET}    Cross-robot messaging via LCM streams")
     print(f"  {CYAN}VLM{RESET}      GPT-4o vision for scene observation")
     print()
-    time.sleep(1.5)
+    time.sleep(1)
 
-    # ── Build ──
+    # ── Build & Launch ──
     print(hline("─", BR_BLACK))
     timed(t0, f"{BOLD}Initializing patrol modules...{RESET}")
 
@@ -148,7 +132,6 @@ def _run(t0):
     game = build_patrol()
     timed(t0, f"{GREEN}Blueprint composed{RESET}  {DIM}13 modules | 2 MuJoCo sims | 2 Agents{RESET}")
 
-    # ── Launch with spinner ──
     timed(t0, f"{BOLD}Launching simulations...{RESET}")
     done = threading.Event()
     spin = threading.Thread(target=spinner, args=("Spawning MuJoCo + Agents", done, t0), daemon=True)
@@ -160,8 +143,8 @@ def _run(t0):
     spin.join()
     timed(t0, f"{BR_GREEN}All modules online{RESET}")
 
-    # ── Camera warmup ──
-    warmup = 20
+    # ── Camera warmup (15s) ──
+    warmup = 15
     print()
     for i in range(warmup + 1):
         pct = i / warmup
@@ -180,44 +163,46 @@ def _run(t0):
         sys.exit(1)
 
     print(f"  {BOLD}{CYAN}┌─ MISSION ─────────────────────────────────────────────┐{RESET}")
-    print(f"  {BOLD}{CYAN}│{RESET} Patrol office zones. Observe and report via radio.   {BOLD}{CYAN}│{RESET}")
-    print(f"  {BOLD}{CYAN}│{RESET} React to partner's alerts. Duration: 90 seconds.     {BOLD}{CYAN}│{RESET}")
+    print(f"  {BOLD}{CYAN}│{RESET} Patrol office. Observe and report via radio.         {BOLD}{CYAN}│{RESET}")
+    print(f"  {BOLD}{CYAN}│{RESET} Duration: 80 seconds.                                {BOLD}{CYAN}│{RESET}")
     print(f"  {BOLD}{CYAN}└───────────────────────────────────────────────────────┘{RESET}")
     print()
 
     patrol_ctrl.start_mission("patrol office, observe surroundings, report via radio")
 
-    # ── Inject initial patrol commands to both Agents ──
-    # The Agents listen on their human_input streams.
-    # We inject a start message to kick off autonomous patrol.
+    # ── Inject patrol commands with staggered timing ──
     from dimos.core.transport import pLCMTransport
 
-    time.sleep(2)
-    alpha_input = pLCMTransport("/a_human_input")
-    charlie_input = pLCMTransport("/c_human_input")
+    time.sleep(3)
 
-    alpha_input.publish(
-        "Mission started. You are Alpha. Begin patrolling: "
-        "describe_surroundings first, then move around and broadcast "
-        "what you see to Charlie. Keep exploring."
+    # Alpha starts first — move immediately then observe
+    pLCMTransport("/a_human_input").publish(
+        "Mission started. You are Alpha. Start moving NOW: "
+        "call move_forward(5) immediately, then turn_right(2), "
+        "then describe_surroundings, then broadcast what you see to Charlie. "
+        "Keep this patrol loop going non-stop."
     )
-    time.sleep(1)
-    charlie_input.publish(
-        "Mission started. You are Charlie. Begin patrolling: "
-        "describe_surroundings first, then move around and broadcast "
-        "what you see to Alpha. Keep exploring."
+    timed(t0, f"{YELLOW}Alpha{RESET} patrol command injected")
+
+    time.sleep(5)
+
+    # Charlie starts after Alpha is already moving
+    pLCMTransport("/c_human_input").publish(
+        "Mission started. You are Charlie. Start moving NOW: "
+        "call move_forward(5) immediately, then turn_left(2), "
+        "then describe_surroundings, then broadcast what you see to Alpha. "
+        "Keep this patrol loop going non-stop."
     )
+    timed(t0, f"{MAGENTA}Charlie{RESET} patrol command injected")
 
-    timed(t0, f"{YELLOW}Alpha{RESET} and {MAGENTA}Charlie{RESET} are now patrolling...")
-
-    # ── Watch for 90 seconds ──
-    mission_duration = 90
+    # ── Patrol phase (80s) ──
+    mission_duration = 80
     start_patrol = time.time()
 
     while time.time() - start_patrol < mission_duration:
-        remaining = mission_duration - (time.time() - start_patrol)
-        if int(remaining) % 30 == 0 and int(remaining) != mission_duration:
-            timed(t0, f"{DIM}{int(remaining)}s remaining...{RESET}")
+        remaining = int(mission_duration - (time.time() - start_patrol))
+        if remaining > 0 and remaining % 20 == 0:
+            timed(t0, f"{DIM}{remaining}s remaining...{RESET}")
         time.sleep(5)
 
     # ── End mission ──
@@ -225,17 +210,16 @@ def _run(t0):
     print(hline("─", BR_BLACK))
     patrol_ctrl.end_mission()
 
-    # Print mission log
     log = patrol_ctrl.get_mission_log()
     if log:
         print()
         print(f"  {BOLD}MISSION LOG{RESET}  {DIM}({len(log)} entries){RESET}")
         print(f"  {BR_BLACK}{'─' * 40}{RESET}")
-        for entry in log[-10:]:  # last 10 entries
+        for entry in log[-10:]:
             src = entry["source"]
             color = YELLOW if src == "Alpha" else (MAGENTA if src == "Charlie" else CYAN)
             msg = entry["message"][:80]
-            print(f"  {color}{src:>10}{RESET}  {DIM}{msg}{RESET}")
+            print(f"  {color}{src:>12}{RESET}  {DIM}{msg}{RESET}")
         if len(log) > 10:
             print(f"  {DIM}... and {len(log) - 10} more{RESET}")
 
