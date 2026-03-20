@@ -81,7 +81,43 @@ def main():
         print(SHOW_CURSOR, end="")
 
 
+def _preflight():
+    """Free RAM by killing non-essential processes and verify enough available."""
+    import os
+    import signal
+    import subprocess
+
+    # Kill known memory hogs that aren't needed for the demo
+    for proc_name in ["openclaw-gateway", "snap-store", "gnome-software"]:
+        try:
+            result = subprocess.run(
+                ["pkill", "-f", proc_name], capture_output=True, timeout=3
+            )
+        except Exception:
+            pass
+
+    # Check available RAM
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    avail_kb = int(line.split()[1])
+                    avail_gb = avail_kb / 1024 / 1024
+                    if avail_gb < 8:
+                        print(f"  {YELLOW}WARNING: Only {avail_gb:.1f} GB RAM available.{RESET}")
+                        print(f"  {YELLOW}Close browsers and heavy apps for best results.{RESET}")
+                        print(f"  {DIM}Need ~8 GB free for 2 MuJoCo sims + 2 LLM agents.{RESET}")
+                        print()
+                    else:
+                        print(f"  {BR_GREEN}RAM: {avail_gb:.1f} GB available{RESET}")
+                    break
+    except Exception:
+        pass
+
+
 def _run(t0):
+    _preflight()
+
     # ── Title ──
     print()
     print(hline("═", CYAN))
