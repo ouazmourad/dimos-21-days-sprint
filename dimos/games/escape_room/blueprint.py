@@ -105,54 +105,46 @@ class TrappedVLM(_EscapeVLM):
     """VLM for the Trapped robot."""
 
 
-class TrappedAgent(Agent):
+class _EscapeAgent(Agent):
+    """Agent subclass with skill filtering and thread-start guard."""
+    OWNED_SKILL_CLASSES: set[str] = set()
+    _modules_initialized: bool = False
+
+    @rpc
+    def on_system_modules(self, modules: list[RPCClient]) -> None:
+        if self._modules_initialized:
+            return  # Guard against double-init
+        self._modules_initialized = True
+
+        if not self.OWNED_SKILL_CLASSES:
+            super().on_system_modules(modules)
+            return
+        filtered = []
+        for m in modules:
+            try:
+                skills = m.get_skills() or []
+            except Exception:
+                filtered.append(m)
+                continue
+            if not skills:
+                filtered.append(m)
+            elif any(s.class_name in self.OWNED_SKILL_CLASSES for s in skills):
+                filtered.append(m)
+        super().on_system_modules(filtered)
+
+
+class TrappedAgent(_EscapeAgent):
     """Agent for the Trapped robot — only uses its own skills."""
     OWNED_SKILL_CLASSES: set[str] = {
         "TrappedNav", "TrappedObserver", "TrappedRadio",
     }
 
-    @rpc
-    def on_system_modules(self, modules: list[RPCClient]) -> None:
-        if not self.OWNED_SKILL_CLASSES:
-            super().on_system_modules(modules)
-            return
-        filtered = []
-        for m in modules:
-            try:
-                skills = m.get_skills() or []
-            except Exception:
-                filtered.append(m)
-                continue
-            if not skills:
-                filtered.append(m)
-            elif any(s.class_name in self.OWNED_SKILL_CLASSES for s in skills):
-                filtered.append(m)
-        super().on_system_modules(filtered)
 
-
-class GuideAgent(Agent):
+class GuideAgent(_EscapeAgent):
     """Agent for the Guide — uses radio + game master skills."""
     OWNED_SKILL_CLASSES: set[str] = {
         "GuideRadio", "GameMaster",
     }
-
-    @rpc
-    def on_system_modules(self, modules: list[RPCClient]) -> None:
-        if not self.OWNED_SKILL_CLASSES:
-            super().on_system_modules(modules)
-            return
-        filtered = []
-        for m in modules:
-            try:
-                skills = m.get_skills() or []
-            except Exception:
-                filtered.append(m)
-                continue
-            if not skills:
-                filtered.append(m)
-            elif any(s.class_name in self.OWNED_SKILL_CLASSES for s in skills):
-                filtered.append(m)
-        super().on_system_modules(filtered)
 
 
 class TrappedNav(SimpleNavSkill):
