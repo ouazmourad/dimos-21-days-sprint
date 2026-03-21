@@ -1,7 +1,7 @@
-"""Puzzle definitions for the Robot Escape Room.
+"""Puzzle definitions for the Robot Escape Room maze.
 
 Each puzzle has:
-- A clue the Trapped robot must find (described by what VLM would see)
+- A clue the Trapped robot must find (a colored object in the maze)
 - A hint the Guide gives to help locate it
 - Keywords that validate discovery (if VLM description contains these)
 """
@@ -12,46 +12,49 @@ from dataclasses import dataclass
 @dataclass
 class Puzzle:
     name: str
-    description: str  # what the object actually is
-    hint: str  # cryptic hint the Guide gives
-    keywords: list[str]  # any of these in VLM response = found
-    location_hint: str  # where in the office scene
+    description: str
+    hint: str
+    keywords: list[str]
+    location_hint: str
 
 
-# The 3 puzzles use objects already in scene_office1.xml
+# The 3 clues are colored objects placed in the maze
 PUZZLES = [
     Puzzle(
-        name="Clue 1: The Hidden Seat",
-        description="A black office chair tucked under a desk",
+        name="Clue 1: The Red Sphere",
+        description="A bright red ball on the ground in a dead-end corridor",
         hint=(
-            "Your first clue is something people sit on, but it's hiding. "
-            "Look for something dark and low, tucked away where people work. "
-            "Move toward the desks and look carefully underneath."
+            "Your first clue is round and red, like a small ball. "
+            "It's hiding in a dead end on the left side of the maze. "
+            "Turn left and follow the wall — look for something bright "
+            "on the ground. Ignore any red cubes — you need a SPHERE."
         ),
-        keywords=["chair", "seat", "stool", "sitting", "wheels", "rolling"],
-        location_hint="near the desks",
+        keywords=["red", "sphere", "ball", "round", "circular"],
+        location_hint="dead end on the left side",
     ),
     Puzzle(
-        name="Clue 2: The Light Barrier",
-        description="The curtains or window panels",
+        name="Clue 2: The Blue Cylinder",
+        description="A blue cylinder tucked behind a corner on the right side",
         hint=(
-            "Your second clue hangs vertically and blocks the outside world. "
-            "It's soft, it drapes, and it controls how much light enters the room. "
-            "Turn toward where the light comes from and look for fabric."
+            "Your second clue is blue and shaped like a tube or can. "
+            "It's on the right side of the maze, hidden behind a corner. "
+            "Navigate to the right corridors and look for something blue "
+            "and cylindrical near the wall."
         ),
-        keywords=["curtain", "drape", "fabric", "window", "blind", "panel", "hanging"],
-        location_hint="near the windows",
+        keywords=["blue", "cylinder", "tube", "can", "cylindrical", "pillar"],
+        location_hint="right corridor behind a corner",
     ),
     Puzzle(
-        name="Clue 3: The Gathering Surface",
-        description="The large meeting/conference table",
+        name="Clue 3: The Green Box",
+        description="A green cube near the upper-right corner — the exit",
         hint=(
-            "Your final clue is where groups come together. It's flat, wide, "
-            "and surrounded by the first clue you found. It dominates the center "
-            "of the space. Describe this large surface to complete your escape."
+            "Your final clue is green and square, like a small box or cube. "
+            "It marks the exit of the maze in the upper-right area. "
+            "Navigate toward the far corner — when you find the green box, "
+            "describe it and you're FREE!"
         ),
-        keywords=["table", "desk", "surface", "conference", "meeting", "flat", "long"],
-        location_hint="center of the room",
+        keywords=["green", "box", "cube", "square", "block"],
+        location_hint="upper-right corner near the exit",
     ),
 ]
 

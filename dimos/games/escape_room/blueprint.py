@@ -192,9 +192,12 @@ def build_escape_room(model: str = "claude-3-haiku-20240307") -> Blueprint:
     global_config.n_workers = 1
     global_config.simulation = True
     global_config.performance_tier = "low"
+    global_config.mujoco_room = "escape_maze"
+    global_config.mujoco_start_pos = "-3.0, -3.0"
+    global_config.mujoco_start_yaw = 45.0  # face into the maze
     global_config.resolve_performance_tier()
 
-    # Trapped robot — has sim
+    # Trapped robot — has sim (in the maze)
     sim = g1_sim_connection()
     vlm = TrappedVLM.blueprint(model=model, system_prompt=ESCAPE_VLM_PROMPT)
     trapped_agent = TrappedAgent.blueprint(model=model, system_prompt=TRAPPED_PROMPT)
