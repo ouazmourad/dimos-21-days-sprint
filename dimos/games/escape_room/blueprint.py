@@ -177,7 +177,10 @@ class GuideRadio(RadioSkill):
 # Blueprint
 # ═══════════════════════════════════════════════════════════════════
 
-def build_escape_room(model: str = "claude-3-haiku-20240307") -> Blueprint:
+def build_escape_room(
+    agent_model: str = "claude-3-haiku-20240307",
+    vlm_model: str = "gpt-4o",
+) -> Blueprint:
     """Build the escape room blueprint.
 
     Only 1 MuJoCo sim (Trapped robot). Guide is text-only agent.
@@ -199,14 +202,14 @@ def build_escape_room(model: str = "claude-3-haiku-20240307") -> Blueprint:
 
     # Trapped robot — has sim (in the maze)
     sim = g1_sim_connection()
-    vlm = TrappedVLM.blueprint(model=model, system_prompt=ESCAPE_VLM_PROMPT)
-    trapped_agent = TrappedAgent.blueprint(model=model, system_prompt=TRAPPED_PROMPT)
+    vlm = TrappedVLM.blueprint(model=vlm_model, system_prompt=ESCAPE_VLM_PROMPT)
+    trapped_agent = TrappedAgent.blueprint(model=agent_model, system_prompt=TRAPPED_PROMPT)
     nav = TrappedNav.blueprint()
     observer = TrappedObserver.blueprint()
     trapped_radio = TrappedRadio.blueprint()
 
     # Guide — no sim, just agent + radio + game master
-    guide_agent = GuideAgent.blueprint(model=model, system_prompt=GUIDE_PROMPT)
+    guide_agent = GuideAgent.blueprint(model=agent_model, system_prompt=GUIDE_PROMPT)
     guide_radio = GuideRadio.blueprint()
     gm = game_master()
 
@@ -246,9 +249,9 @@ def build_escape_room(model: str = "claude-3-haiku-20240307") -> Blueprint:
     return game
 
 
-def run_escape_room(model: str = "claude-3-haiku-20240307") -> None:
+def run_escape_room(agent_model: str = "claude-3-haiku-20240307", vlm_model: str = "gpt-4o") -> None:
     """Run the escape room game."""
-    game = build_escape_room(model=model)
+    game = build_escape_room(agent_model=agent_model, vlm_model=vlm_model)
     coordinator = game.build()
     coordinator.loop()
 
