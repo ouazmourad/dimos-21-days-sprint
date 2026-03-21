@@ -188,7 +188,7 @@ def build_escape_room(
     global_config.simulation = True
     global_config.performance_tier = "low"
     global_config.mujoco_room = "escape_maze"
-    global_config.mujoco_start_pos = "-3.0, -3.0"
+    global_config.mujoco_start_pos = "-4.0, -4.0"
     global_config.mujoco_start_yaw = 45.0  # face into the maze
     global_config.resolve_performance_tier()
 
