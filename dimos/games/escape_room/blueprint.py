@@ -190,6 +190,7 @@ def build_escape_room(
     global_config.mujoco_room = "escape_maze"
     global_config.mujoco_start_pos = "-4.0, -4.0"
     global_config.mujoco_start_yaw = 45.0  # face into the maze
+    global_config.mujoco_person = False  # no walking person in the maze
     global_config.resolve_performance_tier()
 
     # Trapped robot — has sim (in the maze)

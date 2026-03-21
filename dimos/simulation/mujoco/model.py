@@ -123,7 +123,8 @@ def get_model_xml(robot: str, scene_xml: str, config: GlobalConfig | None = None
             quality_elem = ET.SubElement(visual, "quality")
         quality_elem.set("shadowsize", str(config.mujoco_shadowsize))
 
-    _add_person_object(root)
+    if config is None or config.mujoco_person:
+        _add_person_object(root)
 
     return ET.tostring(root, encoding="unicode")
 

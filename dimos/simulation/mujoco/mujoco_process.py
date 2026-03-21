@@ -132,7 +132,7 @@ def _run_simulation(config: GlobalConfig, shm: ShmReader) -> None:
     camera_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, "head_camera")
     lidar_camera_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, "lidar_front_camera")
 
-    person_position_controller = PersonPositionController(model)
+    person_position_controller = PersonPositionController(model) if config.mujoco_person else None
 
     lidar_left_camera_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, "lidar_left_camera")
     lidar_right_camera_id = mujoco.mj_name2id(
@@ -190,7 +190,8 @@ def _run_simulation(config: GlobalConfig, shm: ShmReader) -> None:
             for _ in range(config.mujoco_steps_per_frame):
                 mujoco.mj_step(model, data)
 
-            person_position_controller.tick(data)
+            if person_position_controller:
+                person_position_controller.tick(data)
 
             # Update FPS counter
             fps_frame_count += 1
@@ -286,7 +287,8 @@ def _run_simulation(config: GlobalConfig, shm: ShmReader) -> None:
                 time.sleep(time_until_next_step)
 
         # lidar_executor.shutdown(wait=False)
-        person_position_controller.stop()
+        if person_position_controller:
+            person_position_controller.stop()
 
 
 if __name__ == "__main__":
