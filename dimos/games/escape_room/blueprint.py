@@ -191,6 +191,8 @@ def build_escape_room(
     global_config.mujoco_start_pos = "-3.0, -4.0"
     global_config.mujoco_start_yaw = 0.0
     global_config.mujoco_person = False
+    # Override steps_per_frame — Go1 RL policy needs >= 7 to stay upright
+    global_config.mujoco_steps_per_frame = 7
     global_config.resolve_performance_tier()
 
     # Trapped robot — has sim (in the maze)
