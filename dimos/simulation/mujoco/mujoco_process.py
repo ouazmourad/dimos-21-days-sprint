@@ -72,22 +72,76 @@ logger = setup_logger()
 
 
 class MockController:
-    """Controller that reads commands from shared memory."""
+    """Controller that reads commands from shared memory.
 
-    def __init__(self, shm_interface: ShmReader) -> None:
+    When wall_avoidance is enabled, overrides forward movement with a turn
+    if the front depth camera sees a wall within WALL_THRESHOLD metres.
+    This keeps the RL policy stable (no physics collision forces) while
+    preventing the robot from staring at a wall for minutes.
+    """
+
+    WALL_THRESHOLD = 0.8  # metres — start turning when wall is this close
+    TURN_SPEED = 0.6      # rad/s yaw injected when avoiding a wall
+
+    def __init__(self, shm_interface: ShmReader, wall_avoidance: bool = False) -> None:
         self.shm = shm_interface
         self._command = np.zeros(3, dtype=np.float32)
+        self._wall_avoidance = wall_avoidance
+        self._front_depth: NDArray[Any] | None = None
+        self._left_depth: NDArray[Any] | None = None
+        self._right_depth: NDArray[Any] | None = None
+        self._wall_turn_count: int = 0
+
+    def set_depth(
+        self, front: NDArray[Any], left: NDArray[Any], right: NDArray[Any]
+    ) -> None:
+        """Called from the sim loop after rendering depth cameras."""
+        self._front_depth = front
+        self._left_depth = left
+        self._right_depth = right
+
+    @staticmethod
+    def _min_depth(depth: NDArray[Any]) -> float:
+        """Minimum distance in center strip of a depth image."""
+        h, w = depth.shape
+        centre = depth[h // 3 : 2 * h // 3, w // 4 : 3 * w // 4]
+        return float(np.min(centre)) if centre.size > 0 else 999.0
 
     def get_command(self) -> NDArray[Any]:
         """Get the current movement command."""
         cmd_data = self.shm.read_command()
         if cmd_data is not None:
             linear, angular = cmd_data
-            # MuJoCo expects [forward, lateral, rotational]
-            self._command[0] = linear[0]  # forward/backward
-            self._command[1] = linear[1]  # left/right
-            self._command[2] = angular[2]  # rotation
+            self._command[0] = linear[0]
+            self._command[1] = linear[1]
+            self._command[2] = angular[2]
+
         result: NDArray[Any] = self._command.copy()
+
+        if self._wall_avoidance and self._front_depth is not None:
+            front_dist = self._min_depth(self._front_depth)
+
+            if front_dist < self.WALL_THRESHOLD:
+                # Wall ahead — decide turn direction from side depths
+                left_dist = self._min_depth(self._left_depth) if self._left_depth is not None else 999.0
+                right_dist = self._min_depth(self._right_depth) if self._right_depth is not None else 999.0
+
+                # Turn toward the side with MORE space
+                turn_dir = 1.0 if left_dist >= right_dist else -1.0
+
+                result[0] = 0.0  # stop forward
+                result[2] = turn_dir * self.TURN_SPEED
+                self._wall_turn_count += 1
+
+                # If stuck turning for a long time (corner), increase speed
+                if self._wall_turn_count > 50:
+                    result[2] *= 1.5
+            else:
+                self._wall_turn_count = 0
+                if result[0] == 0.0 and result[2] == 0.0:
+                    # No agent command and no wall — gentle forward drift
+                    result[0] = 0.3
+
         return result
 
     def stop(self) -> None:
@@ -100,7 +154,7 @@ def _run_simulation(config: GlobalConfig, shm: ShmReader) -> None:
     if robot_name == "unitree_go2":
         robot_name = "unitree_go1"
 
-    controller = MockController(shm)
+    controller = MockController(shm, wall_avoidance=config.mujoco_wall_collision)
     model, data = load_model(
         controller, robot=robot_name, scene_xml=load_scene_xml(config), config=config
     )
@@ -116,9 +170,9 @@ def _run_simulation(config: GlobalConfig, shm: ShmReader) -> None:
         case _:
             z = 0
 
-    pos = config.mujoco_start_pos_float
+    spawn_pos = config.mujoco_start_pos_float
 
-    data.qpos[0:3] = [pos[0], pos[1], z]
+    data.qpos[0:3] = [spawn_pos[0], spawn_pos[1], z]
 
     # Apply initial heading (yaw) as a quaternion rotation around Z
     yaw_deg = config.mujoco_start_yaw
@@ -133,6 +187,23 @@ def _run_simulation(config: GlobalConfig, shm: ShmReader) -> None:
     lidar_camera_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, "lidar_front_camera")
 
     person_position_controller = PersonPositionController(model) if config.mujoco_person else None
+
+    # Build wall bounding boxes for position clamping (no physics forces).
+    wall_boxes: list[tuple[float, float, float, float]] = []  # (xmin, xmax, ymin, ymax)
+    if config.mujoco_wall_collision:
+        robot_radius = 0.3  # keep robot center this far from wall surface
+        for i in range(model.ngeom):
+            gname = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, i) or ""
+            if gname.startswith("wall_"):
+                p = model.geom_pos[i]
+                s = model.geom_size[i]
+                wall_boxes.append((
+                    p[0] - s[0] - robot_radius,
+                    p[0] + s[0] + robot_radius,
+                    p[1] - s[1] - robot_radius,
+                    p[1] + s[1] + robot_radius,
+                ))
+        logger.info(f"Wall collision: {len(wall_boxes)} wall bounding boxes")
 
     lidar_left_camera_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, "lidar_left_camera")
     lidar_right_camera_id = mujoco.mj_name2id(
@@ -190,6 +261,37 @@ def _run_simulation(config: GlobalConfig, shm: ShmReader) -> None:
             for _ in range(config.mujoco_steps_per_frame):
                 mujoco.mj_step(model, data)
 
+            # Position-clamp: push robot out of walls without applying forces.
+            if wall_boxes:
+                rx, ry = data.qpos[0], data.qpos[1]
+                for xmin, xmax, ymin, ymax in wall_boxes:
+                    if xmin < rx < xmax and ymin < ry < ymax:
+                        # Find nearest edge and push out
+                        dx_left = rx - xmin
+                        dx_right = xmax - rx
+                        dy_bot = ry - ymin
+                        dy_top = ymax - ry
+                        d_min = min(dx_left, dx_right, dy_bot, dy_top)
+                        if d_min == dx_left:
+                            data.qpos[0] = xmin
+                        elif d_min == dx_right:
+                            data.qpos[0] = xmax
+                        elif d_min == dy_bot:
+                            data.qpos[1] = ymin
+                        else:
+                            data.qpos[1] = ymax
+                        # Zero out the velocity component that was pushing into wall
+                        data.qvel[0] *= 0.5
+                        data.qvel[1] *= 0.5
+
+            # Fall recovery: if robot z drops below threshold, reset to spawn.
+            if config.mujoco_wall_collision and data.qpos[2] < 0.3:
+                logger.info("Fall detected — resetting robot to spawn")
+                data.qpos[0:3] = [spawn_pos[0], spawn_pos[1], z]
+                data.qpos[3:7] = [1, 0, 0, 0]  # neutral orientation
+                data.qvel[:] = 0
+                mujoco.mj_forward(model, data)
+
             if person_position_controller:
                 person_position_controller.tick(data)
 
@@ -238,6 +340,9 @@ def _run_simulation(config: GlobalConfig, shm: ShmReader) -> None:
                 depth_right = depth_right_renderer.render()
 
                 shm.write_depth(depth_front, depth_left, depth_right)
+
+                # Feed depth to controller for wall avoidance
+                controller.set_depth(depth_front, depth_left, depth_right)
 
                 # Process depth images into lidar message (synchronous -- causes stalls)
                 all_points = []

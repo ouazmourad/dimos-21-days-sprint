@@ -18,48 +18,60 @@ class Puzzle:
     location_hint: str
 
 
-# The 3 clues are colored objects placed in the maze
+# Clues ordered nearest-to-spawn first: Blue (spawn room) → Green (adjacent) → Red (far)
 PUZZLES = [
     Puzzle(
-        name="Clue 1: The Red Sphere",
-        description="A bright red ball on the ground in a dead-end corridor",
+        name="Clue 1: The Blue Cylinder",
+        description="A glowing blue cylinder on a pedestal in the lower-left area",
         hint=(
-            "Your first clue is round and red, like a small ball. "
-            "It's hiding in a dead end on the left side of the maze. "
-            "Turn left and follow the wall — look for something bright "
-            "on the ground. Ignore any red cubes — you need a SPHERE."
-        ),
-        keywords=["red", "sphere", "ball", "round", "circular"],
-        location_hint="dead end on the left side",
-    ),
-    Puzzle(
-        name="Clue 2: The Blue Cylinder",
-        description="A blue cylinder tucked behind a corner on the right side",
-        hint=(
-            "Your second clue is blue and shaped like a tube or can. "
-            "It's on the right side of the maze, hidden behind a corner. "
-            "Navigate to the right corridors and look for something blue "
-            "and cylindrical near the wall."
+            "Your first clue is a glowing blue tube on a grey pedestal. "
+            "It's nearby — look around you in the lower-left area. "
+            "Turn and walk until you see something bright blue on a stand."
         ),
         keywords=["blue", "cylinder", "tube", "can", "cylindrical", "pillar"],
-        location_hint="right corridor behind a corner",
+        location_hint="lower-left pocket near spawn",
     ),
     Puzzle(
-        name="Clue 3: The Green Box",
-        description="A green cube near the upper-right corner — the exit",
+        name="Clue 2: The Green Box",
+        description="A glowing green cube on a pedestal marking the exit",
         hint=(
-            "Your final clue is green and square, like a small box or cube. "
-            "It marks the exit of the maze in the upper-right area. "
-            "Navigate toward the far corner — when you find the green box, "
-            "describe it and you're FREE!"
+            "Your second clue is a glowing green cube on a grey stand. "
+            "It's in the upper-right area. Head north through the gap "
+            "in the wall, then look to your right for the green box."
         ),
-        keywords=["green", "box", "cube", "square", "block"],
-        location_hint="upper-right corner near the exit",
+        keywords=["green", "box", "cube", "square", "block", "prism", "rectangle", "rectangular"],
+        location_hint="upper-right corner",
+    ),
+    Puzzle(
+        name="Clue 3: The Red Sphere",
+        description="A glowing red sphere on a pedestal in the left room",
+        hint=(
+            "Your final clue is a glowing red ball on a grey pedestal. "
+            "It's on the far LEFT side of the maze. Keep heading north "
+            "past the center wall opening, then go left. "
+            "Find the bright red sphere and you're FREE!"
+        ),
+        keywords=["red", "sphere", "ball", "round", "circular", "orb"],
+        location_hint="left room behind the center divider",
     ),
 ]
 
 
+_COLOR_WORDS = {"red", "blue", "green"}
+_SHAPE_WORDS = {
+    "sphere", "ball", "round", "circular", "orb",
+    "cylinder", "tube", "can", "cylindrical", "pillar",
+    "box", "cube", "square", "block", "prism", "rectangle", "rectangular",
+}
+
+
 def check_discovery(vlm_description: str, puzzle: Puzzle) -> bool:
-    """Check if the VLM description matches the puzzle keywords."""
+    """Check if the VLM description matches both a color AND shape keyword.
+
+    Requiring two keyword categories prevents false positives like
+    'red wall' matching the Red Sphere puzzle.
+    """
     desc_lower = vlm_description.lower()
-    return any(kw in desc_lower for kw in puzzle.keywords)
+    has_color = any(kw in desc_lower for kw in puzzle.keywords if kw in _COLOR_WORDS)
+    has_shape = any(kw in desc_lower for kw in puzzle.keywords if kw in _SHAPE_WORDS)
+    return has_color and has_shape

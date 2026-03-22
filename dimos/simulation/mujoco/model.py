@@ -64,7 +64,13 @@ def load_model(
     mujoco.set_mjcb_control(None)
 
     xml_string = get_model_xml(robot, scene_xml, config=config)
-    model = mujoco.MjModel.from_xml_string(xml_string, assets=get_assets())
+    assets = get_assets()
+
+    # Inject collision capsules into robot XML for maze wall collision.
+    if config is not None and config.mujoco_wall_collision:
+        _inject_collision_capsules(assets, robot)
+
+    model = mujoco.MjModel.from_xml_string(xml_string, assets=assets)
     data = mujoco.MjData(model)
 
     mujoco.mj_resetDataKeyframe(model, data, 0)
@@ -99,6 +105,11 @@ def load_model(
     mujoco.set_mjcb_control(policy.get_control)
 
     return model, data
+
+
+def _inject_collision_capsules(assets: dict[str, bytes], robot: str) -> None:
+    """No-op. Wall collision is handled by position clamping in mujoco_process.py."""
+    pass
 
 
 def get_model_xml(robot: str, scene_xml: str, config: GlobalConfig | None = None) -> str:

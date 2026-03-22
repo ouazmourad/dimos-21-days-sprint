@@ -70,6 +70,7 @@ class GlobalConfig(BaseSettings):
     mujoco_shadows: bool = True
     mujoco_reflections: bool = True
     mujoco_person: bool = True  # spawn a walking person in the scene
+    mujoco_wall_collision: bool = False  # enable robot-wall collision for maze scenes
     robot_model: str | None = None
     robot_width: float = 0.3
     robot_rotation_diameter: float = 0.6

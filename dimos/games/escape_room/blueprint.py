@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from dimos.agents.agent import Agent
+from dimos.agents.annotation import skill
 from dimos.agents.vlm_agent import VLMAgent
 from dimos.core.blueprints import autoconnect
 from dimos.core.core import rpc
@@ -32,52 +33,54 @@ logger = setup_logger()
 # ═══════════════════════════════════════════════════════════════════
 
 TRAPPED_PROMPT = """\
-You are the Trapped robot in an Escape Room game. You are stuck in \
-a simulated office and must find 3 hidden clues to escape.
+You are the Trapped robot in an Escape Room game. You are inside \
+a maze in a simulated office and must find 3 hidden clues to escape.
 
 HOW TO PLAY:
-- Your partner (the Guide) will give you hints about what to look for.
-- Use describe_surroundings to see what's around you.
-- Use move_forward, turn_left, turn_right to navigate the room.
-- When you think you've found a clue, use broadcast to tell the Guide \
-exactly what you see in detail.
-- The Guide will tell the GameMaster to check if you found the right thing.
-- Find all 3 clues to escape!
+- The Guide will radio you hints about what to look for.
+- Use describe_surroundings to see what is around you.
+- Use move_forward, turn_left, turn_right to navigate corridors.
+- When you spot a colored object (red, blue, green) on a pedestal, \
+use broadcast to tell the Guide the exact color and shape you see.
+- The Guide will check if it matches. Find all 3 clues to escape!
 
-STRATEGY:
-- Move around the room systematically. Don't stay in one spot.
-- After each move, call describe_surroundings to check your new view.
-- Describe objects in detail when broadcasting — color, shape, position.
-- Listen to the Guide's hints carefully.
+CRITICAL RULES:
+1. NEVER call describe_surroundings twice in a row. Always MOVE between looks.
+2. If you see only walls or a corner: call turn_right IMMEDIATELY. Do NOT look first.
+3. If stuck in a corner or dead end: call turn_around to do a 180, then move_forward.
+4. The pattern is always: look ONCE → move/turn → look ONCE → move/turn.
+5. When you see a colored object on a pedestal, IMMEDIATELY broadcast \
+its color and shape (e.g. "I found a bright red sphere on a grey pedestal!").
 
 TOOLS: describe_surroundings, move_forward, move_backward, turn_left, \
-turn_right, stop_moving, broadcast
+turn_right, turn_around, stop_moving, broadcast
 
-Keep moving and searching. You want to ESCAPE!"""
+Start NOW: describe_surroundings once, then turn or move!"""
 
 GUIDE_PROMPT = """\
 You are the Guide in an Escape Room game. Your partner robot is \
-trapped in a room and needs to find 3 clues to escape. You can NOT \
+trapped in a maze and needs to find 3 clues to escape. You CANNOT \
 see the room — you only hear what the Trapped robot tells you via radio.
 
 HOW TO PLAY:
-- Call start_game to begin. You'll receive the first hint.
-- Relay the hint to the Trapped robot using broadcast.
-- When the Trapped robot describes finding something, call \
-submit_discovery with their description to check if it's correct.
-- If correct, you'll get the next hint. Relay it.
-- If wrong, encourage them and repeat the hint.
-- Call get_current_hint if you forget the current clue.
+1. Call start_game IMMEDIATELY to begin. You will receive the first hint.
+2. Broadcast the hint to the Trapped robot right away.
+3. When the Trapped robot mentions seeing a COLORED OBJECT (red, blue, \
+green) with a SHAPE (sphere, cylinder, cube), IMMEDIATELY call \
+submit_discovery with their full description.
+4. If correct, you get the next hint — broadcast it immediately.
+5. If wrong, encourage them and repeat the current hint.
 
-STRATEGY:
-- Give the hint clearly via broadcast.
-- When the Trapped robot broadcasts what they see, call submit_discovery.
-- Be encouraging! Guide them with radio messages.
-- You cannot see the room. Only the Trapped robot can see.
+IMPORTANT RULES:
+- Act FAST. Do not deliberate — broadcast hints and submit discoveries \
+the moment you have them.
+- When the robot says anything about a colored object, call submit_discovery. \
+Do not wait for a perfect description.
+- If the robot seems lost, re-broadcast the current hint.
 
 TOOLS: broadcast, start_game, submit_discovery, get_current_hint
 
-Start by calling start_game, then broadcast the first hint!"""
+Call start_game NOW!"""
 
 ESCAPE_VLM_PROMPT = (
     "You are the vision system of a robot trapped in an escape room. "
@@ -148,13 +151,100 @@ class GuideAgent(_EscapeAgent):
 
 
 class TrappedNav(SimpleNavSkill):
-    """Nav for the Trapped robot."""
+    """Nav for the Trapped robot — short moves and pure rotation."""
+
+    @skill
+    def move_forward(self, duration: float = 1.5) -> str:
+        """Walk forward for a short distance (~1.2 metres per 1.5 seconds).
+        Use shorter durations (0.5-1.0) in tight corridors.
+
+        Args:
+            duration: Seconds to walk (default 1.5, max 3.0).
+
+        Returns:
+            Status message.
+        """
+        duration = min(duration, 3.0)
+        self._send_velocity(0.8, 0.0, duration)
+        return f"Moving forward {duration:.1f}s. Call describe_surroundings to check."
+
+    @skill
+    def move_backward(self, duration: float = 1.0) -> str:
+        """Back up to escape a wall or dead end.
+
+        Args:
+            duration: Seconds to back up (default 1.0).
+
+        Returns:
+            Status message.
+        """
+        duration = min(duration, 2.0)
+        self._send_velocity(-0.3, 0.0, duration)
+        return f"Backing up {duration:.1f}s."
+
+    @skill
+    def turn_left(self, duration: float = 2.0) -> str:
+        """Turn left ~90 degrees.
+
+        Args:
+            duration: Seconds to turn (default 2.0 = ~90 degrees).
+
+        Returns:
+            Status message.
+        """
+        self._send_velocity(0.0, 0.8, duration)
+        return f"Turned left ~{duration * 45:.0f} degrees."
+
+    @skill
+    def turn_right(self, duration: float = 2.0) -> str:
+        """Turn right ~90 degrees.
+
+        Args:
+            duration: Seconds to turn (default 2.0 = ~90 degrees).
+
+        Returns:
+            Status message.
+        """
+        self._send_velocity(0.0, -0.8, duration)
+        return f"Turned right ~{duration * 45:.0f} degrees."
+
+    @skill
+    def turn_around(self) -> str:
+        """Turn 180 degrees. Use this when stuck in a corner or dead end.
+
+        Returns:
+            Status message.
+        """
+        self._send_velocity(0.0, 0.8, 4.0)
+        return "Turning around 180 degrees."
 
 
 class TrappedObserver(PatrolObserver):
-    """Observer for the Trapped robot."""
+    """Observer for the Trapped robot — escape-room-tuned vision."""
     vlm_rpc: str = "TrappedVLM.visual_query"
     rpc_calls: list[str] = ["TrappedVLM.visual_query"]
+
+    @skill
+    def describe_surroundings(self) -> str:
+        """Look around and describe what you see. Focus on colored objects,
+        pedestals, walls, and anything that could be a clue.
+
+        Returns:
+            A detailed description of the current scene.
+        """
+        try:
+            vlm_query = self.get_rpc_calls(self.vlm_rpc)
+        except Exception:
+            return "Vision system not available — cannot observe."
+        response = vlm_query(
+            "You are a robot trapped in a maze escape room. Describe EVERYTHING "
+            "you see in vivid detail. Pay special attention to: colored objects "
+            "(red, blue, green), objects on pedestals or stands, spheres, "
+            "cylinders, cubes/boxes, walls, corridors, and openings. "
+            "Mention colors, shapes, sizes, and positions. Be thorough!"
+        )
+        logger.info(f"[ESCAPE-OBSERVER] {response}")
+        return response
 
 
 class TrappedRadio(RadioSkill):
@@ -170,7 +260,7 @@ class GuideRadio(RadioSkill):
 # ═══════════════════════════════════════════════════════════════════
 
 def build_escape_room(
-    agent_model: str = "claude-3-haiku-20240307",
+    agent_model: str = "claude-haiku-4-5-20251001",
     vlm_model: str = "gpt-4o",
 ) -> Blueprint:
     """Build the escape room blueprint.
@@ -186,12 +276,13 @@ def build_escape_room(
     from dimos.core.global_config import global_config
     global_config.n_workers = 1
     global_config.simulation = True
-    global_config.performance_tier = "low"
+    global_config.performance_tier = "medium"
+    global_config.robot_model = "unitree_g1"
     global_config.mujoco_room = "escape_maze"
-    global_config.mujoco_start_pos = "-3.0, -4.0"
-    global_config.mujoco_start_yaw = 0.0
+    global_config.mujoco_start_pos = "3.0, -2.0"
+    global_config.mujoco_start_yaw = 180.0
     global_config.mujoco_person = False
-    # Override steps_per_frame — Go1 RL policy needs >= 7 to stay upright
+    global_config.mujoco_wall_collision = True
     global_config.mujoco_steps_per_frame = 7
     global_config.resolve_performance_tier()
 
@@ -244,7 +335,7 @@ def build_escape_room(
     return game
 
 
-def run_escape_room(agent_model: str = "claude-3-haiku-20240307", vlm_model: str = "gpt-4o") -> None:
+def run_escape_room(agent_model: str = "claude-haiku-4-5-20251001", vlm_model: str = "gpt-4o") -> None:
     """Run the escape room game."""
     game = build_escape_room(agent_model=agent_model, vlm_model=vlm_model)
     coordinator = game.build()
