@@ -12,7 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Go2 Fleet Connection - manage multiple Go2 robots as a fleet"""
+"""Go2 Fleet Connection — multi-robot fleet with individual control.
+
+Uses :func:`dimos.core.fleet.fleet` for automatic per-robot namespacing
+so that each robot has its own sensor streams, nav skills, and agents.
+
+Usage::
+
+    # Via fleet() — each robot gets independent streams
+    from dimos.core.fleet import fleet, RobotConfig
+    from dimos.robot.unitree.go2.connection import GO2Connection
+
+    bp = fleet(robots=[
+        RobotConfig("alpha", GO2Connection, kwargs={"ip": "10.0.0.102"}),
+        RobotConfig("bravo", GO2Connection, kwargs={"ip": "10.0.0.209"}),
+    ])
+
+    # Legacy broadcast mode — all robots receive the same commands
+    ROBOT_IPS=10.0.0.102,10.0.0.209 dimos run unitree-go2-fleet
+"""
 
 from __future__ import annotations
 
@@ -34,9 +52,15 @@ logger = setup_logger()
 
 
 class Go2FleetConnection(GO2Connection):
-    """Inherits all single-robot behaviour from GO2Connection for the primary
-    (first) robot. Additional robots only receive broadcast commands
-    (move, standup, liedown, publish_request).
+    """Legacy broadcast fleet — all robots receive the same commands.
+
+    For individual robot control with independent sensor streams,
+    use :func:`dimos.core.fleet.fleet` instead::
+
+        fleet(robots=[
+            RobotConfig("alpha", GO2Connection, kwargs={"ip": "10.0.0.102"}),
+            RobotConfig("bravo", GO2Connection, kwargs={"ip": "10.0.0.209"}),
+        ])
     """
 
     def __init__(
@@ -73,7 +97,6 @@ class Go2FleetConnection(GO2Connection):
 
     @rpc
     def stop(self) -> None:
-        # one robot's error should not prevent others from stopping
         for conn in self._extra_connections:
             try:
                 conn.liedown()

@@ -90,11 +90,10 @@ rerun_config = {
     # any pubsub that supports subscribe_all and topic that supports str(topic)
     # is acceptable here
     "pubsubs": [LCM()],
-    # Custom converters for specific rerun entity paths
-    # Normally all these would be specified in their respectative modules
-    # Until this is implemented we have central overrides here
-    #
-    # This is unsustainable once we move to multi robot etc
+    # Custom converters for specific rerun entity paths.
+    # Hey, for multi-robot setups, use fleet() which auto-namespaces topics
+    # (e.g. "world/camera_info" -> "world/alpha/camera_info").
+    # check out dimos.core.fleet for the multi-robot API
     "visual_override": {
         "world/camera_info": _convert_camera_info,
         "world/global_map": _convert_global_map,
