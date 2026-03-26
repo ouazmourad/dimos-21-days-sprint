@@ -25,6 +25,7 @@ Under the hood this:
 
 from __future__ import annotations
 
+import copyreg
 import sys
 from dataclasses import dataclass, field
 from typing import Any, get_args, get_origin
@@ -76,27 +77,58 @@ class SharedModule:
 # ─── Internals ────────────────────────────────────────────────────
 
 
+# Cache to avoid recreating the same subclass.
+_fleet_cache: dict[tuple[str, type], type[Module]] = {}
+
+# Track which metaclasses have been registered with copyreg.
+_registered_metas: set[type] = set()
+
+
+def _reduce_fleet_class(cls: type) -> tuple:
+    """copyreg reducer — tells pickle how to reconstruct a fleet class."""
+    return (_namespace_class, (cls._fleet_robot_name, cls._fleet_base))
+
+
 def _namespace_class(robot_name: str, base: type[Module]) -> type[Module]:
     """Create a uniquely-named subclass of *base* for *robot_name*.
 
-    The dynamic subclass has a distinct ``__name__`` (required by
-    ``RPCClient`` for routing) and a distinct identity (required by
-    ``ModuleCoordinator`` which keys deployed modules by class).
-
-    The ``__module__`` attribute is preserved so that
-    ``get_type_hints`` can resolve ``In[Twist]`` etc. via the
-    originating module's global namespace.
+    Uses a custom metaclass + ``copyreg`` so the class can be pickled
+    across worker-process boundaries.  When unpickling, pickle calls
+    ``_namespace_class(robot_name, base)`` which recreates the class.
     """
+    key = (robot_name, base)
+    if key in _fleet_cache:
+        return _fleet_cache[key]
+
     cls_name = f"{robot_name.capitalize()}_{base.__name__}"
-    new_cls: type[Module] = type(cls_name, (base,), {})  # type: ignore[assignment]
+
+    # Build a metaclass compatible with the base's metaclass
+    base_meta = type(base)
+
+    class _FleetMeta(base_meta):
+        pass
+
+    _FleetMeta.__name__ = f"_FleetMeta_{cls_name}"
+    _FleetMeta.__qualname__ = f"_FleetMeta_{cls_name}"
+
+    # Create the dynamic subclass
+    new_cls: type[Module] = _FleetMeta(  # type: ignore[assignment]
+        cls_name,
+        (base,),
+        {
+            "_fleet_robot_name": robot_name,
+            "_fleet_base": base,
+        },
+    )
     new_cls.__module__ = base.__module__
 
-    # Register in the base module's namespace so pickle can find it
-    # (required for worker-process deployment via multiprocessing).
-    parent_ns = sys.modules.get(base.__module__)
-    if parent_ns is not None:
-        setattr(parent_ns, cls_name, new_cls)
+    # Register copyreg reducer for this metaclass so pickle calls
+    # _reduce_fleet_class instead of doing module+name lookup.
+    if _FleetMeta not in _registered_metas:
+        copyreg.pickle(_FleetMeta, _reduce_fleet_class)
+        _registered_metas.add(_FleetMeta)
 
+    _fleet_cache[key] = new_cls
     return new_cls
 
 
