@@ -54,7 +54,7 @@ class TwoRobotSimConnection(Module):
 
     SPAWN_POSITIONS = {
         "alpha": "-1.0, 1.0",
-        "bravo": "2.0, -2.0",
+        "bravo": "3.5, -2.0",
     }
 
     def __init__(self, **kwargs: Any) -> None:
