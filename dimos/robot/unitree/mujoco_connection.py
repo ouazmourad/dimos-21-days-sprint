@@ -40,11 +40,7 @@ from dimos.msgs.sensor_msgs import CameraInfo, Image, ImageFormat, PointCloud2
 from dimos.robot.unitree.type.odometry import Odometry
 from dimos.simulation.mujoco.constants import (
     LAUNCHER_PATH,
-    LIDAR_FPS,
     VIDEO_CAMERA_FOV,
-    VIDEO_FPS,
-    VIDEO_HEIGHT,
-    VIDEO_WIDTH,
 )
 from dimos.simulation.mujoco.shared_memory import ShmWriter
 from dimos.utils.data import get_data
@@ -87,31 +83,32 @@ class MujocoConnection:
         self._stop_events: list[threading.Event] = []
         self._is_cleaned_up = False
 
-    @staticmethod
-    def _compute_camera_info() -> CameraInfo:
+        self.camera_info_static = self._compute_camera_info()
+
+    def _compute_camera_info(self) -> CameraInfo:
         """Compute camera intrinsics from MuJoCo camera parameters.
 
         Uses pinhole camera model: f = height / (2 * tan(fovy / 2))
         """
         import math
 
+        w = self.global_config.mujoco_video_width
+        h = self.global_config.mujoco_video_height
         fovy = math.radians(VIDEO_CAMERA_FOV)
-        f = VIDEO_HEIGHT / (2 * math.tan(fovy / 2))
-        cx = VIDEO_WIDTH / 2.0
-        cy = VIDEO_HEIGHT / 2.0
+        f = h / (2 * math.tan(fovy / 2))
+        cx = w / 2.0
+        cy = h / 2.0
 
         return CameraInfo(
             frame_id="camera_optical",
-            height=VIDEO_HEIGHT,
-            width=VIDEO_WIDTH,
+            height=h,
+            width=w,
             distortion_model="plumb_bob",
             D=[0.0, 0.0, 0.0, 0.0, 0.0],
             K=[f, 0.0, cx, 0.0, f, cy, 0.0, 0.0, 1.0],
             R=[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
             P=[f, 0.0, cx, 0.0, 0.0, f, cy, 0.0, 0.0, 0.0, 1.0, 0.0],
         )
-
-    camera_info_static: CameraInfo = _compute_camera_info()
 
     def start(self) -> None:
         self.shm_data = ShmWriter()
@@ -317,7 +314,9 @@ class MujocoConnection:
 
     @functools.cache
     def lidar_stream(self) -> Observable[PointCloud2]:
-        return self._create_stream(self.get_lidar_message, LIDAR_FPS, "Lidar")
+        return self._create_stream(
+            self.get_lidar_message, self.global_config.mujoco_lidar_fps, "Lidar"
+        )
 
     @functools.cache
     def odom_stream(self) -> Observable[Odometry]:
@@ -330,7 +329,9 @@ class MujocoConnection:
             # MuJoCo renderer returns RGB uint8 frames; Image.from_numpy defaults to BGR.
             return Image.from_numpy(frame, format=ImageFormat.RGB) if frame is not None else None
 
-        return self._create_stream(get_video_as_image, VIDEO_FPS, "Video")
+        return self._create_stream(
+            get_video_as_image, self.global_config.mujoco_video_fps, "Video"
+        )
 
     def move(self, twist: Twist, duration: float = 0.0) -> bool:
         if self._is_cleaned_up or self.shm_data is None:

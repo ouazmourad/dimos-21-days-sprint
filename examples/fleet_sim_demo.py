@@ -68,14 +68,8 @@ class TwoRobotSimConnection(Module):
         cfg.simulation = True
         cfg.robot_model = "unitree_g1"
         cfg.mujoco_start_pos = self.SPAWN_POSITIONS[robot_id]
-
-        # Apply performance_tier=low to keep resource usage manageable
-        if hasattr(cfg, "performance_tier"):
-            cfg.performance_tier = "low"
-            cfg.resolve_performance_tier()
-        else:
-            # Fallback for main branch without performance_tier
-            cfg.mujoco_steps_per_frame = 3
+        cfg.performance_tier = "low"
+        cfg.resolve_performance_tier()
         return cfg
 
     @rpc

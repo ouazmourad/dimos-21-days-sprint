@@ -30,14 +30,7 @@ import open3d as o3d  # type: ignore[import-untyped]
 
 from dimos.core.global_config import GlobalConfig
 from dimos.msgs.sensor_msgs import PointCloud2
-from dimos.simulation.mujoco.constants import (
-    DEPTH_CAMERA_FOV,
-    LIDAR_FPS,
-    LIDAR_RESOLUTION,
-    VIDEO_FPS,
-    VIDEO_HEIGHT,
-    VIDEO_WIDTH,
-)
+from dimos.simulation.mujoco.constants import DEPTH_CAMERA_FOV
 from dimos.simulation.mujoco.depth_camera import depth_image_to_point_cloud
 from dimos.simulation.mujoco.model import load_model, load_scene_xml
 from dimos.simulation.mujoco.person_on_track import PersonPositionController
@@ -77,7 +70,9 @@ def _run_simulation(config: GlobalConfig, shm: ShmReader) -> None:
         robot_name = "unitree_go1"
 
     controller = MockController(shm)
-    model, data = load_model(controller, robot=robot_name, scene_xml=load_scene_xml(config))
+    model, data = load_model(
+        controller, robot=robot_name, scene_xml=load_scene_xml(config), config=config
+    )
 
     if model is None or data is None:
         raise ValueError("Failed to load MuJoCo model: model or data is None")
@@ -106,20 +101,26 @@ def _run_simulation(config: GlobalConfig, shm: ShmReader) -> None:
         model, mujoco.mjtObj.mjOBJ_CAMERA, "lidar_right_camera"
     )
 
+    width = config.mujoco_video_width
+    height = config.mujoco_video_height
+
+    # Apply shadow settings to the model before creating renderers
+    if not config.mujoco_shadows:
+        model.vis.quality.shadowsize = 0
+
+    shm.set_resolution(width, height)
     shm.signal_ready()
 
     with viewer.launch_passive(model, data, show_left_ui=False, show_right_ui=False) as m_viewer:
-        camera_size = (VIDEO_WIDTH, VIDEO_HEIGHT)
-
-        # Create renderers
-        rgb_renderer = mujoco.Renderer(model, height=camera_size[1], width=camera_size[0])
-        depth_renderer = mujoco.Renderer(model, height=camera_size[1], width=camera_size[0])
+        # Create renderers at configured resolution
+        rgb_renderer = mujoco.Renderer(model, height=height, width=width)
+        depth_renderer = mujoco.Renderer(model, height=height, width=width)
         depth_renderer.enable_depth_rendering()
 
-        depth_left_renderer = mujoco.Renderer(model, height=camera_size[1], width=camera_size[0])
+        depth_left_renderer = mujoco.Renderer(model, height=height, width=width)
         depth_left_renderer.enable_depth_rendering()
 
-        depth_right_renderer = mujoco.Renderer(model, height=camera_size[1], width=camera_size[0])
+        depth_right_renderer = mujoco.Renderer(model, height=height, width=width)
         depth_right_renderer.enable_depth_rendering()
 
         scene_option = mujoco.MjvOption()
@@ -127,8 +128,13 @@ def _run_simulation(config: GlobalConfig, shm: ShmReader) -> None:
         # Timing control
         last_video_time = 0.0
         last_lidar_time = 0.0
-        video_interval = 1.0 / VIDEO_FPS
-        lidar_interval = 1.0 / LIDAR_FPS
+        video_interval = 1.0 / config.mujoco_video_fps
+        lidar_interval = 1.0 / config.mujoco_lidar_fps
+
+        # FPS tracking
+        fps_frame_count = 0
+        fps_last_time = time.time()
+        fps_display = 0.0
 
         m_viewer.cam.lookat = config.mujoco_camera_position_float[0:3]
         m_viewer.cam.distance = config.mujoco_camera_position_float[3]
@@ -143,6 +149,18 @@ def _run_simulation(config: GlobalConfig, shm: ShmReader) -> None:
                 mujoco.mj_step(model, data)
 
             person_position_controller.tick(data)
+
+            # Update FPS counter
+            fps_frame_count += 1
+            fps_now = time.time()
+            fps_elapsed = fps_now - fps_last_time
+            if fps_elapsed >= 1.0:
+                fps_display = fps_frame_count / fps_elapsed
+                fps_frame_count = 0
+                fps_last_time = fps_now
+            m_viewer.set_texts(
+                (mujoco.mjtFont.mjFONT_BIG, mujoco.mjtGridPos.mjGRID_TOPLEFT, f"FPS: {fps_display:.0f}", "")
+            )
 
             m_viewer.sync()
 
@@ -209,7 +227,7 @@ def _run_simulation(config: GlobalConfig, shm: ShmReader) -> None:
                     combined_points = np.vstack(all_points)
                     pcd = o3d.geometry.PointCloud()
                     pcd.points = o3d.utility.Vector3dVector(combined_points)
-                    pcd = pcd.voxel_down_sample(voxel_size=LIDAR_RESOLUTION)
+                    pcd = pcd.voxel_down_sample(voxel_size=config.mujoco_lidar_resolution)
 
                     lidar_msg = PointCloud2(
                         pointcloud=pcd,

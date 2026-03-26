@@ -39,8 +39,8 @@ _cmd_size = 6 * 4  # 6 float32 values
 _lidar_size = 1024 * 1024 * 4  # 4MB should be enough for point cloud
 # Sequence/version numbers for detecting updates
 _seq_size = 8 * 8  # 8 int64 values for different data types
-# Control buffer: ready flag + stop flag
-_control_size = 2 * 4  # 2 int32 values
+# Control buffer: ready flag + stop flag + width + height
+_control_size = 4 * 4  # 4 int32 values
 
 _shm_sizes = {
     "video": _video_size,
@@ -100,12 +100,17 @@ class ShmReader:
         self.shm = ShmSet.from_names(shm_names)
         self._last_cmd_seq = 0
 
+    def set_resolution(self, width: int, height: int) -> None:
+        control_array: NDArray[Any] = np.ndarray((4,), dtype=np.int32, buffer=self.shm.control.buf)
+        control_array[2] = width
+        control_array[3] = height
+
     def signal_ready(self) -> None:
-        control_array: NDArray[Any] = np.ndarray((2,), dtype=np.int32, buffer=self.shm.control.buf)
+        control_array: NDArray[Any] = np.ndarray((4,), dtype=np.int32, buffer=self.shm.control.buf)
         control_array[0] = 1  # ready flag
 
     def should_stop(self) -> bool:
-        control_array: NDArray[Any] = np.ndarray((2,), dtype=np.int32, buffer=self.shm.control.buf)
+        control_array: NDArray[Any] = np.ndarray((4,), dtype=np.int32, buffer=self.shm.control.buf)
         return bool(control_array[1] == 1)  # stop flag
 
     def signal_stop(self) -> None:
@@ -113,30 +118,24 @@ class ShmReader:
         control_array[1] = 1  # Set stop flag
 
     def write_video(self, pixels: NDArray[Any]) -> None:
-        video_array: NDArray[Any] = np.ndarray(
-            (VIDEO_HEIGHT, VIDEO_WIDTH, 3), dtype=np.uint8, buffer=self.shm.video.buf
-        )
-        video_array[:] = pixels
+        h, w = pixels.shape[:2]
+        n_bytes = h * w * 3
+        flat_buf: NDArray[Any] = np.ndarray((n_bytes,), dtype=np.uint8, buffer=self.shm.video.buf)
+        flat_buf[:] = pixels.reshape(-1)
         self._increment_seq(0)
 
     def write_depth(self, front: NDArray[Any], left: NDArray[Any], right: NDArray[Any]) -> None:
-        # Front camera
-        depth_array: NDArray[Any] = np.ndarray(
-            (VIDEO_HEIGHT, VIDEO_WIDTH), dtype=np.float32, buffer=self.shm.depth_front.buf
-        )
-        depth_array[:] = front
-
-        # Left camera
-        depth_array = np.ndarray(
-            (VIDEO_HEIGHT, VIDEO_WIDTH), dtype=np.float32, buffer=self.shm.depth_left.buf
-        )
-        depth_array[:] = left
-
-        # Right camera
-        depth_array = np.ndarray(
-            (VIDEO_HEIGHT, VIDEO_WIDTH), dtype=np.float32, buffer=self.shm.depth_right.buf
-        )
-        depth_array[:] = right
+        h, w = front.shape[:2]
+        n_floats = h * w
+        for depth_img, shm_buf in [
+            (front, self.shm.depth_front),
+            (left, self.shm.depth_left),
+            (right, self.shm.depth_right),
+        ]:
+            depth_array: NDArray[Any] = np.ndarray(
+                (n_floats,), dtype=np.float32, buffer=shm_buf.buf
+            )
+            depth_array[:] = depth_img.reshape(-1)
 
         self._increment_seq(1)
 
@@ -205,24 +204,33 @@ class ShmWriter:
         cmd_array: NDArray[Any] = np.ndarray((6,), dtype=np.float32, buffer=self.shm.cmd.buf)
         cmd_array[:] = 0
 
-        control_array: NDArray[Any] = np.ndarray((2,), dtype=np.int32, buffer=self.shm.control.buf)
-        control_array[:] = 0  # [ready_flag, stop_flag]
+        control_array: NDArray[Any] = np.ndarray((4,), dtype=np.int32, buffer=self.shm.control.buf)
+        control_array[:] = 0  # [ready_flag, stop_flag, width, height]
+
+    def get_resolution(self) -> tuple[int, int]:
+        control_array: NDArray[Any] = np.ndarray((4,), dtype=np.int32, buffer=self.shm.control.buf)
+        w, h = int(control_array[2]), int(control_array[3])
+        if w > 0 and h > 0:
+            return w, h
+        return VIDEO_WIDTH, VIDEO_HEIGHT  # fallback to max
 
     def is_ready(self) -> bool:
-        control_array: NDArray[Any] = np.ndarray((2,), dtype=np.int32, buffer=self.shm.control.buf)
+        control_array: NDArray[Any] = np.ndarray((4,), dtype=np.int32, buffer=self.shm.control.buf)
         return bool(control_array[0] == 1)
 
     def signal_stop(self) -> None:
-        control_array: NDArray[Any] = np.ndarray((2,), dtype=np.int32, buffer=self.shm.control.buf)
+        control_array: NDArray[Any] = np.ndarray((4,), dtype=np.int32, buffer=self.shm.control.buf)
         control_array[1] = 1  # Set stop flag
 
     def read_video(self) -> tuple[NDArray[Any] | None, int]:
         seq = self._get_seq(0)
         if seq > 0:
-            video_array: NDArray[Any] = np.ndarray(
-                (VIDEO_HEIGHT, VIDEO_WIDTH, 3), dtype=np.uint8, buffer=self.shm.video.buf
+            w, h = self.get_resolution()
+            n_bytes = h * w * 3
+            flat_buf: NDArray[Any] = np.ndarray(
+                (n_bytes,), dtype=np.uint8, buffer=self.shm.video.buf
             )
-            return video_array.copy(), seq
+            return flat_buf.copy().reshape(h, w, 3), seq
         return None, 0
 
     def read_odom(self) -> tuple[tuple[NDArray[Any], NDArray[Any], float] | None, int]:
