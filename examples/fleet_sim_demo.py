@@ -54,7 +54,7 @@ class TwoRobotSimConnection(Module):
 
     SPAWN_POSITIONS = {
         "alpha": "-1.0, 1.0",
-        "bravo": "1.0, -1.0",
+        "bravo": "2.0, -2.0",
     }
 
     def __init__(self, **kwargs: Any) -> None:
@@ -67,6 +67,8 @@ class TwoRobotSimConnection(Module):
         cfg = copy.deepcopy(global_config)
         cfg.simulation = True
         cfg.robot_model = "unitree_g1"
+        cfg.mujoco_room = "office1"
+        cfg.mujoco_person = False
         cfg.mujoco_start_pos = self.SPAWN_POSITIONS[robot_id]
         cfg.performance_tier = "low"
         cfg.resolve_performance_tier()
