@@ -45,7 +45,7 @@ class ModuleCoordinator(Resource):  # type: ignore[misc]
         n: int | None = None,
         cfg: GlobalConfig = global_config,
     ) -> None:
-        self._n = n if n is not None else getattr(cfg, "n_workers", getattr(cfg, "n_dask_workers", 2))
+        self._n = n if n is not None else cfg.n_workers
         self._memory_limit = cfg.memory_limit
         self._global_config = cfg
         self._deployed_modules = {}

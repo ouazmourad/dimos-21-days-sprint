@@ -140,7 +140,7 @@ def main():
     global_config.simulation = True
     global_config.robot_model = "unitree_g1"
 
-    game = autoconnect(two_robot_sim()).global_config(n_dask_workers=1)
+    game = autoconnect(two_robot_sim()).global_config(n_workers=1)
 
     print("\n=== Fleet Simulation Demo (performance_tier=low) ===")
     print("  Alpha: spawns at (-1, 1)")

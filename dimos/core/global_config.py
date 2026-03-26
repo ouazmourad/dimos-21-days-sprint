@@ -64,11 +64,16 @@ class GlobalConfig(BaseSettings):
     mujoco_shadowsize: int = 8192
     mujoco_shadows: bool = True
     mujoco_reflections: bool = True
+    mujoco_person: bool = True
     robot_model: str | None = None
+    robot_ips: str | None = None
     robot_width: float = 0.3
     robot_rotation_diameter: float = 0.6
+    n_workers: int = 2
     planner_strategy: NavigationStrategy = "simple"
     planner_robot_speed: float | None = None
+    dtop: bool = False
+    obstacle_avoidance: bool = True
     dask: bool = True
 
     model_config = SettingsConfigDict(
