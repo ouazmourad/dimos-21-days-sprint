@@ -187,13 +187,13 @@ def build_escape_room(
     global_config.n_workers = 1
     global_config.simulation = True
     global_config.performance_tier = "low"
+    global_config.resolve_performance_tier()
+    # Override AFTER resolve so these don't get clobbered
     global_config.mujoco_room = "escape_maze"
-    global_config.mujoco_start_pos = "-3.0, -4.0"
+    global_config.mujoco_start_pos = "-5.0, -1.0"  # inside maze south corridor
     global_config.mujoco_start_yaw = 0.0
     global_config.mujoco_person = False
-    # Override steps_per_frame — Go1 RL policy needs >= 7 to stay upright
     global_config.mujoco_steps_per_frame = 7
-    global_config.resolve_performance_tier()
 
     # Trapped robot — has sim (in the maze)
     sim = g1_sim_connection()

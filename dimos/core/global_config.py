@@ -29,7 +29,7 @@ _TIER_PRESETS: dict[str, dict[str, object]] = {
     "mujoco_video_width": {"low": 160, "medium": 240, "high": 320},
     "mujoco_video_height": {"low": 120, "medium": 180, "high": 240},
     "mujoco_lidar_resolution": {"low": 0.1, "medium": 0.05, "high": 0.05},
-    "mujoco_steps_per_frame": {"low": 3, "medium": 5, "high": 7},
+    "mujoco_steps_per_frame": {"low": 7, "medium": 7, "high": 7},
     "mujoco_shadowsize": {"low": 0, "medium": 2048, "high": 8192},
     "mujoco_shadows": {"low": False, "medium": True, "high": True},
     "mujoco_reflections": {"low": False, "medium": False, "high": True},
