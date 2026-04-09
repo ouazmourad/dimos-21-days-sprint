@@ -1,0 +1,52 @@
+# Hermes Agent config to drive a DIMOS Go2 robot via MCP.
+#
+# Copy this into ~/.hermes/config.yaml (or merge into your existing one).
+# Then launch DIMOS first, then Hermes:
+#
+#   1. Terminal A — start DIMOS MCP server + Go2 sim:
+#        cd ~/Desktop/dimos-21days-sprint/dimos-21-days-sprint
+#        CI=1 .venv/bin/python -m dimos.integrations.hermes.run_dimos_mcp
+#
+#   2. Terminal B — set the API key, then start Hermes:
+#        export ANTHROPIC_API_KEY="sk-ant-api03-..."
+#        hermes
+#
+#      (Or put ANTHROPIC_API_KEY=... in ~/.hermes/.env so you don't have
+#      to export it every time.)
+#
+#   3. In Hermes, the DIMOS tools should be auto-discovered.
+#      Try:  /tools list
+#      Then: "Walk forward 2 meters"
+#
+# DIMOS skills exposed by this MCP server (lite variant):
+#   - move(linear_x, linear_y, angular_z, duration)   -> velocity command
+#   - standup / liedown / balance_stand               -> postures
+#   - speak(text)                                     -> TTS through OpenAI
+#   - server_status / list_modules                    -> introspection
+#
+# Plus (full variant only):
+#   - navigate_with_text(query)                       -> semantic navigation
+#   - tag_location(location_name)                     -> save current pose
+#   - stop_navigation()                               -> cancel goal
+
+# =============================================================================
+# Model: Anthropic Claude direct (uses ANTHROPIC_API_KEY from env)
+# =============================================================================
+model:
+  default: "anthropic/claude-sonnet-4-5-20250929"
+  provider: "anthropic"
+  # No base_url needed — anthropic provider hits api.anthropic.com directly.
+  # No api_key here — Hermes reads ANTHROPIC_API_KEY from the environment
+  # (or from ~/.hermes/.env). DO NOT commit your real key into this file.
+
+# =============================================================================
+# MCP server: DIMOS Go2 robot
+# =============================================================================
+mcp_servers:
+  dimos:
+    url: http://127.0.0.1:9990/mcp
+    timeout: 60
+    connect_timeout: 30
+    # Optional — keep only the action skills and skip introspection wrappers:
+    # tools:
+    #   exclude: [server_status, list_modules, agent_send]
