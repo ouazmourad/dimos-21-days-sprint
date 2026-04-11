@@ -46,6 +46,7 @@ class GlobalConfig(BaseSettings):
     mujoco_global_map_from_pointcloud: str | None = None
     mujoco_start_pos: str = "-1.0, 1.0"
     mujoco_steps_per_frame: int = 7
+    mujoco_wooden_skin: bool = True  # render the Go1 quadruped as a wooden toy
     robot_model: str | None = None
     robot_width: float = 0.3
     robot_rotation_diameter: float = 0.6
