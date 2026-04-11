@@ -133,6 +133,12 @@ def run(
 
     cli_config_overrides: dict[str, Any] = ctx.obj
     global_config.update(**cli_config_overrides)
+    # Apply performance tier presets for any fields not explicitly overridden.
+    # Without this, --performance-tier low only sets the tier field and the
+    # preset values (video fps/size, shadows, etc.) never take effect.
+    global_config.resolve_performance_tier(
+        explicit_overrides=set(cli_config_overrides.keys()),
+    )
 
     # Clean stale registry entries
     stale = cleanup_stale()
