@@ -1,0 +1,6 @@
+# Proud: holds postures, larger amplitudes, settles slowly into final pose.
+curiosity: 0.1
+energy: 0.2
+confidence: 0.8
+softness: 0.0
+playfulness: -0.1

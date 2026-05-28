@@ -1,0 +1,7 @@
+# Shy: hesitant, retreats from approach, smaller and slower gestures.
+# Negative confidence inserts initiation delay; high softness slows settles.
+curiosity: 0.3
+energy: -0.4
+confidence: -0.6
+softness: 0.5
+playfulness: -0.2
