@@ -445,9 +445,11 @@ def test_engine_lowpass_bounds_action_acceleration(
     def accels(seq):
         return [abs(seq[i] - 2 * seq[i - 1] + seq[i - 2]) for i in range(2, len(seq))]
 
-    # The continuously-driven neck (gaze blend) is smooth throughout —
-    # this is what the low-pass guarantees for non-discrete motion.
-    assert max(accels(neck)) < 0.02
-    # The gesture-driven calf has one sharp transient at the paw-lift
-    # onset (a crisp gesture is *meant* to be sharp), but stays bounded.
-    assert max(accels(calf)) < 0.1
+    # The continuously-driven neck (gaze blend) stays smooth — bounded
+    # second difference, no discontinuous jumps. The notice double-take
+    # deliberately snaps the head, so the bound accommodates that crisp
+    # move (~0.026 rad ≈ 1.5°) while still catching real discontinuities.
+    assert max(accels(neck)) < 0.05
+    # The gesture-driven calf has one sharp transient at the paw-wave
+    # onset (a crisp, deliberately big gesture), but stays bounded.
+    assert max(accels(calf)) < 0.15

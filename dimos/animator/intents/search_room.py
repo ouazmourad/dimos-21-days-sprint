@@ -17,8 +17,8 @@ from dimos.animator.personality import Personality
 
 
 def search_room(
-    yaw_range_rad: float = 0.5,
-    n_stops: int = 4,
+    yaw_range_rad: float = 0.8,
+    n_stops: int = 5,
     personality: Personality | None = None,
     tick_dt: float = 1.0 / 50.0,
 ) -> Iterator[IntentTick]:

@@ -29,14 +29,18 @@ def curious_head_tilt(
     """
     personality = personality or Personality()
     speed = max(0.2, personality.speed_scale())
-    # Amplitude is dialed by curiosity, capped at the rig's roll limit.
-    base_roll = 0.10 * direction * (1.0 + 0.5 * personality.curiosity)
-    base_pitch = 0.06 * (1.0 + 0.3 * personality.curiosity)
+    # Big, clear tilt — dialed by curiosity. The rig roll limit is now 0.30.
+    base_roll = 0.24 * direction * (1.0 + 0.4 * personality.curiosity)
+    base_pitch = 0.12 * (1.0 + 0.3 * personality.curiosity)
 
+    # Tilt one way, hold, swing through to the OTHER side, hold, recover —
+    # "huh? ...huh??" reads far more characterful than a single tilt.
     timeline = [
-        ("enter",  0.35 / speed),
-        ("hold",   0.4 / speed * personality.dwell_scale()),
-        ("exit",   0.4 / speed * personality.settle_scale()),
+        ("enter",   0.30 / speed),
+        ("hold_a",  0.35 / speed * personality.dwell_scale()),
+        ("swing",   0.40 / speed),
+        ("hold_b",  0.35 / speed * personality.dwell_scale()),
+        ("exit",    0.40 / speed * personality.settle_scale()),
     ]
 
     for phase, phase_dur in timeline:
@@ -46,18 +50,25 @@ def curious_head_tilt(
             tick = IntentTick()
 
             if phase == "enter":
-                # Quadratic ease-in
                 ease = phase_t * phase_t
                 tick.posture_target = PostureTarget(roll_offset_rad=base_roll * ease)
                 tick.gaze_target = GazeTarget(pitch_rad=base_pitch * ease)
-            elif phase == "hold":
+            elif phase == "hold_a":
                 tick.posture_target = PostureTarget(roll_offset_rad=base_roll)
                 tick.gaze_target = GazeTarget(pitch_rad=base_pitch)
+            elif phase == "swing":
+                # Sweep from +base_roll through 0 to -base_roll.
+                ease = phase_t * phase_t * (3 - 2 * phase_t)  # smoothstep
+                roll = base_roll * (1.0 - 2.0 * ease)
+                tick.posture_target = PostureTarget(roll_offset_rad=roll)
+                tick.gaze_target = GazeTarget(pitch_rad=base_pitch)
+            elif phase == "hold_b":
+                tick.posture_target = PostureTarget(roll_offset_rad=-base_roll)
+                tick.gaze_target = GazeTarget(pitch_rad=base_pitch)
             else:
-                # Smooth release back to neutral.
                 ease = 1.0 - (1.0 - phase_t) ** 2
                 release = 1.0 - ease
-                tick.posture_target = PostureTarget(roll_offset_rad=base_roll * release)
+                tick.posture_target = PostureTarget(roll_offset_rad=-base_roll * release)
                 tick.gaze_target = GazeTarget(pitch_rad=base_pitch * release)
 
             yield tick

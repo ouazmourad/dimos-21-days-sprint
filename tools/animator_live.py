@@ -14,15 +14,18 @@ Controls (type in the terminal, no Enter needed):
     4  nervous      5  calm
     n  notice guest         c  curious head-tilt
     p  proud chest-lift     r  search room ("look around")
-    space  return to idle
+    w  walk forward (toggle)   a/d  steer left/right while walking
+    space  return to idle (and stop walking)
     q  quit
 
-Mouse-orbit / zoom the viewer window as usual.
+While walking, the trot gait drives the legs + body across the floor
+and the expressive head rides on top. Mouse-orbit / zoom as usual.
 """
 
 from __future__ import annotations
 
 import atexit
+import math
 import os
 import queue
 import select
@@ -43,6 +46,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from dimos.animator.engine import AnimationEngine
+from dimos.animator.gait import GaitGenerator
 from dimos.animator.intents import (
     curious_head_tilt,
     notice_guest,
@@ -56,6 +60,9 @@ from dimos.animator.rig import CharacterRig
 from dimos.animator.sim_head import HEAD_JOINTS, compose_animator_go1_xml
 from dimos.simulation.mujoco.model import get_assets
 from dimos.utils.data import get_data
+
+# Leg joints the gait owns while walking.
+_LEG_JOINTS = set(GO1_JOINT_ORDER)
 
 PERSONALITIES = {"1": "curious", "2": "shy", "3": "proud", "4": "nervous", "5": "calm"}
 TICK_DT = 1.0 / 50.0
@@ -89,6 +96,12 @@ def main() -> None:
         if jid >= 0:
             jq[j] = model.jnt_qposadr[jid]
     head_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "head")
+    trunk_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "trunk")
+    base_adr = model.jnt_qposadr[model.body_jntadr[trunk_id]]  # free-joint xyz+quat
+    base_z0 = float(data.qpos[base_adr + 2])
+
+    gait = GaitGenerator(rig.default_pose)
+    walk = {"on": False, "turn": 0.0, "yaw": 0.0}
 
     def build(name: str):
         p = Personality.from_yaml(ROOT / f"data/animator/personalities/{name}.yaml")
@@ -130,11 +143,26 @@ def main() -> None:
             engine.trigger(proud_chest_lift(personality=personality, tick_dt=TICK_DT))
             print("  -> proud_chest_lift", flush=True)
         elif ch == "r":
-            engine.trigger(search_room(yaw_range_rad=0.6, n_stops=5,
+            engine.trigger(search_room(yaw_range_rad=0.8, n_stops=5,
                                        personality=personality, tick_dt=TICK_DT))
             print("  -> search_room", flush=True)
+        elif ch == "w":
+            walk["on"] = not walk["on"]
+            if walk["on"]:
+                gait.reset()
+            else:
+                walk["turn"] = 0.0
+            print(f"  -> walk {'ON' if walk['on'] else 'off'}", flush=True)
+        elif ch == "a":
+            walk["turn"] = 1.0
+            print("  -> steer left", flush=True)
+        elif ch == "d":
+            walk["turn"] = -1.0
+            print("  -> steer right", flush=True)
         elif ch == " ":
             personality, engine = build(name)
+            walk["on"] = False
+            walk["turn"] = 0.0
             print("  -> idle", flush=True)
         elif ch in ("q", "\x03"):  # q or Ctrl-C
             return False
@@ -161,10 +189,31 @@ def main() -> None:
                 pass
 
             tick = engine.tick()
+            # Engine drives everything (head + expressive legs) when standing.
             for nm, v in tick.command.angles.items():
                 if nm in jq:
                     data.qpos[jq[nm]] = v
+
+            # While walking, the gait OWNS the 12 leg joints and moves the
+            # base across the floor; the expressive head keeps riding on top.
+            if walk["on"]:
+                out = gait.step(TICK_DT, personality, turn=walk["turn"])
+                for nm, v in out.leg_angles.items():
+                    data.qpos[jq[nm]] = v
+                walk["yaw"] += out.base_dyaw
+                cy, sy = math.cos(walk["yaw"] / 2), math.sin(walk["yaw"] / 2)
+                # Advance in the current heading direction.
+                data.qpos[base_adr + 0] += out.base_dx * math.cos(walk["yaw"])
+                data.qpos[base_adr + 1] += out.base_dx * math.sin(walk["yaw"])
+                data.qpos[base_adr + 2] = base_z0 + out.base_dz
+                data.qpos[base_adr + 3] = cy   # quat w
+                data.qpos[base_adr + 6] = sy   # quat z (yaw)
+                # Steering auto-centres after each press.
+                walk["turn"] *= 0.92
+
             mujoco.mj_forward(model, data)
+            # Keep the camera on the (possibly moving) robot.
+            viewer.cam.lookat[:] = data.xpos[trunk_id]
             viewer.sync()
 
             dt = TICK_DT - (time.perf_counter() - t0)

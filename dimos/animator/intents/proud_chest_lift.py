@@ -22,9 +22,10 @@ def proud_chest_lift(
 ) -> Iterator[IntentTick]:
     personality = personality or Personality()
     speed = max(0.2, personality.speed_scale())
-    # If confidence ≤ -0.5, the beat is almost invisible — by design.
-    height_lift = max(0.02, 0.07 + 0.05 * personality.confidence)
-    pitch_up = max(0.02, 0.10 + 0.06 * personality.confidence)
+    # Big chest puff + chin lift (rig z limit now 0.18, gaze pitch 0.45).
+    # If confidence ≤ -0.5 the beat stays small — by design.
+    height_lift = max(0.02, 0.15 + 0.05 * personality.confidence)
+    pitch_up = max(0.03, 0.22 + 0.08 * personality.confidence)
 
     timeline = [
         ("inhale", 0.4 / speed),
