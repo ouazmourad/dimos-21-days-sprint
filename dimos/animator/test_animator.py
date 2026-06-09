@@ -369,3 +369,85 @@ def test_sim_head_xml_loads_in_mujoco() -> None:
     model = mujoco.MjModel.from_xml_string(xml, assets=assets)
     for j in HEAD_JOINTS:
         assert mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, j) >= 0
+
+
+# Animation engine (layered composition) ---------------------------------
+
+def test_blend_frames_endpoints() -> None:
+    from dimos.animator.engine import Frame, blend_frames
+    from dimos.animator.channels.gaze import GazeTarget
+    bg = Frame(gaze_target=GazeTarget(yaw_rad=0.0))
+    trig = Frame(gaze_target=GazeTarget(yaw_rad=1.0))
+    assert blend_frames(bg, trig, 0.0).gaze_target.yaw_rad == pytest.approx(0.0)
+    assert blend_frames(bg, trig, 1.0).gaze_target.yaw_rad == pytest.approx(1.0)
+    assert blend_frames(bg, trig, 0.5).gaze_target.yaw_rad == pytest.approx(0.5)
+
+
+def test_blend_gesture_owned_by_dominant_layer() -> None:
+    from dimos.animator.engine import Frame, blend_frames
+    trig = Frame(fire_gesture="paw_wave")
+    # Below 0.5 the triggered layer isn't dominant → no gesture.
+    assert blend_frames(Frame(), trig, 0.3).fire_gesture is None
+    # At/above 0.5 the gesture fires.
+    assert blend_frames(Frame(), trig, 0.6).fire_gesture == "paw_wave"
+
+
+def test_engine_background_always_runs(rig: CharacterRig, curious: Personality) -> None:
+    """With no intent queued, the engine still produces valid commands
+    forever (the always-on background layer)."""
+    from dimos.animator.engine import AnimationEngine
+    orch = PerformanceOrchestrator(rig, curious)
+    eng = AnimationEngine(orch, curious)
+    assert not eng.is_playing
+    last_yaw = []
+    for _ in range(150):  # 3 s
+        tick = eng.tick()
+        assert set(GO1_JOINT_ORDER).issubset(tick.command.angles.keys())
+        last_yaw.append(tick.command.angles["neck_yaw"])
+    # The background drifts the gaze, so neck_yaw should not be constant.
+    assert max(last_yaw) - min(last_yaw) > 0.02
+
+
+def test_engine_intent_ramps_in_and_out(rig: CharacterRig, curious: Personality) -> None:
+    """A triggered intent blends in over the background and the engine
+    returns to idle (is_playing False) once it finishes."""
+    from dimos.animator.engine import AnimationEngine
+    orch = PerformanceOrchestrator(rig, curious)
+    eng = AnimationEngine(orch, curious)
+    eng.trigger(notice_guest(0.6, 0.2, curious, tick_dt=orch.tick_dt))
+    assert eng.is_playing
+    n = 0
+    while eng.is_playing and n < 2000:
+        eng.tick()
+        n += 1
+    assert not eng.is_playing       # clip finished
+    assert 0 < n < 2000             # finite duration
+    # After finishing, the engine keeps producing background ticks.
+    tick = eng.tick()
+    assert set(GO1_JOINT_ORDER).issubset(tick.command.angles.keys())
+
+
+def test_engine_lowpass_bounds_action_acceleration(
+    rig: CharacterRig, curious: Personality,
+) -> None:
+    """The output low-pass should keep the per-tick second difference
+    (action acceleration) small — the smoothness the paper regularises."""
+    from dimos.animator.engine import AnimationEngine
+    orch = PerformanceOrchestrator(rig, curious)
+    eng = AnimationEngine(orch, curious)
+    eng.trigger(notice_guest(0.8, 0.3, curious, tick_dt=orch.tick_dt))
+    neck, calf = [], []
+    for _ in range(300):
+        cmd = eng.tick().command.angles
+        neck.append(cmd["neck_yaw"])
+        calf.append(cmd["FL_calf_joint"])
+
+    def accels(seq):
+        return [abs(seq[i] - 2 * seq[i - 1] + seq[i - 2]) for i in range(2, len(seq))]
+
+    # The continuously-driven neck (gaze blend) is smooth throughout —
+    # this is what the low-pass guarantees for non-discrete motion.
+    assert max(accels(neck)) < 0.02
+    # The gesture-driven calf has one sharp transient at the paw-lift
+    # onset (a crisp gesture is *meant* to be sharp), but stays bounded.
+    assert max(accels(calf)) < 0.1
