@@ -22,6 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from dimos.animator.channels.breathing import BreathingState
+from dimos.animator.channels.expression import ExpressionState
 from dimos.animator.channels.gaze import GazeTarget
 from dimos.animator.channels.gesture import GestureState
 from dimos.animator.channels.posture import PostureTarget
@@ -41,6 +42,7 @@ class ChannelState:
     posture: PostureTarget = field(default_factory=PostureTarget)
     gesture: GestureState = field(default_factory=GestureState)
     breathing: BreathingState = field(default_factory=BreathingState)
+    expression: ExpressionState = field(default_factory=ExpressionState)
 
 
 @dataclass
@@ -48,8 +50,13 @@ class MixedMotion:
     """Per-virtual-joint offsets, in radians, relative to the default pose.
 
     Whatever isn't set here is implicitly zero (i.e. holds default).
+
+    Body virtual joints (legs) and head virtual joints (neck / eyes /
+    brows) coexist here. The retargeter routes body fields to the 12
+    leg joints and head fields to the articulated-head joints.
     """
 
+    # Body (legs)
     trunk_yaw: float = 0.0
     trunk_pitch: float = 0.0
     trunk_roll: float = 0.0
@@ -57,6 +64,11 @@ class MixedMotion:
     trunk_x: float = 0.0
     trunk_z_breath: float = 0.0
     paw_lift_fl: float = 0.0
+    # Head (neck + face) — only used when an articulated head is present.
+    neck_yaw: float = 0.0
+    neck_pitch: float = 0.0
+    eye_openness: float = 0.7   # [0, 1]
+    brow_raise: float = 0.0     # [-1, 1]
 
 
 class BehaviorMixer:
@@ -86,8 +98,12 @@ class BehaviorMixer:
             if channel_name == "breathing":
                 out["trunk_z_breath"] = snapshot.breathing.z_breath_offset_rad
             elif channel_name == "gaze":
-                out["trunk_yaw"] = snapshot.gaze.yaw_rad
-                out["trunk_pitch"] = snapshot.gaze.pitch_rad
+                # Gaze drives the head (neck) primarily, with the body
+                # following at reduced gain so it still participates.
+                out["neck_yaw"] = snapshot.gaze.yaw_rad
+                out["neck_pitch"] = snapshot.gaze.pitch_rad
+                out["trunk_yaw"] = snapshot.gaze.yaw_rad * 0.35
+                out["trunk_pitch"] = snapshot.gaze.pitch_rad * 0.35
             elif channel_name == "posture":
                 out["trunk_z"] = snapshot.posture.z_offset_rad
                 out["trunk_x"] = snapshot.posture.x_offset_rad
@@ -96,7 +112,8 @@ class BehaviorMixer:
                 # Gesture only drives paw_lift_fl in v1.
                 out["paw_lift_fl"] = snapshot.gesture.paw_lift_fl_offset_rad
 
-        # Per-joint clamp from rig metadata.
+        # Per-joint clamp from rig metadata (head joints aren't in the rig
+        # role table, so _clamp passes them through unchanged).
         return MixedMotion(
             trunk_yaw=self._clamp("trunk_yaw", out.get("trunk_yaw", 0.0)),
             trunk_pitch=self._clamp("trunk_pitch", out.get("trunk_pitch", 0.0)),
@@ -105,4 +122,8 @@ class BehaviorMixer:
             trunk_x=self._clamp("trunk_x", out.get("trunk_x", 0.0)),
             trunk_z_breath=self._clamp("trunk_z_breath", out.get("trunk_z_breath", 0.0)),
             paw_lift_fl=self._clamp("paw_lift_fl", out.get("paw_lift_fl", 0.0)),
+            neck_yaw=out.get("neck_yaw", 0.0),
+            neck_pitch=out.get("neck_pitch", 0.0),
+            eye_openness=snapshot.expression.eye_openness,
+            brow_raise=snapshot.expression.brow_raise,
         )

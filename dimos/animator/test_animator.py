@@ -278,9 +278,10 @@ def test_orchestrator_produces_valid_joint_commands(
     last = None
     for tick in orch.run_intent(intent):
         last = tick
-        # Every joint must always have a value.
-        assert set(tick.command.angles.keys()) == set(GO1_JOINT_ORDER)
-        # All angles should be finite.
+        # The 12 leg joints must always be present; head joints (neck /
+        # eyelids / brows) are also emitted for articulated-head models.
+        assert set(GO1_JOINT_ORDER).issubset(tick.command.angles.keys())
+        # All angles should be finite and in a sane range.
         for v in tick.command.angles.values():
             assert v == v  # NaN check
             assert -10 < v < 10  # sanity range
@@ -310,3 +311,61 @@ def test_orchestrator_personality_swap_changes_breathing(rig: CharacterRig) -> N
     # No equality guarantee; the assertion is that swap actually does
     # something measurable.
     assert calm_amp != nervous_amp
+
+
+# Expression channel + articulated head ----------------------------------
+
+def test_expression_openness_differs_by_personality(
+    curious: Personality, shy: Personality,
+) -> None:
+    """Curious eyes should rest wider open than shy eyes."""
+    from dimos.animator.channels.expression import ExpressionChannel
+    ec_curious = ExpressionChannel()
+    ec_shy = ExpressionChannel()
+    cur_vals, shy_vals = [], []
+    for _ in range(50):
+        cur_vals.append(ec_curious.step(1 / 50, curious).eye_openness)
+        shy_vals.append(ec_shy.step(1 / 50, shy).eye_openness)
+    # Compare the open-state (max between blinks) baselines.
+    assert max(cur_vals) > max(shy_vals)
+
+
+def test_expression_surprise_widens_eyes(curious: Personality) -> None:
+    from dimos.animator.channels.expression import ExpressionChannel
+    ec = ExpressionChannel()
+    base = ec.step(1 / 50, curious).eye_openness
+    ec.notice_surprise(0.5)
+    after = ec.step(1 / 50, curious).eye_openness
+    assert after >= base
+
+
+def test_retargeter_emits_head_joints(rig: CharacterRig) -> None:
+    from dimos.animator.mixer import MixedMotion
+    r = Go2Retargeter(rig)
+    cmd = r.retarget(MixedMotion(neck_yaw=0.3, eye_openness=1.0, brow_raise=1.0))
+    for j in ("neck_yaw", "neck_pitch", "lid_l", "lid_r", "brow_l", "brow_r"):
+        assert j in cmd.angles
+    # Wide-open eyes → lids tucked up (negative angle).
+    assert cmd.angles["lid_l"] < 0.0
+    # Fully closed → lids swept down (large positive angle).
+    cmd_closed = r.retarget(MixedMotion(eye_openness=0.0))
+    assert cmd_closed.angles["lid_l"] > 1.0
+
+
+def test_sim_head_xml_loads_in_mujoco() -> None:
+    """The articulated-head Go1 XML must parse + build in MuJoCo and
+    expose all six head joints."""
+    import mujoco
+
+    from dimos.animator.sim_head import HEAD_JOINTS, compose_animator_go1_xml
+    from dimos.simulation.mujoco.model import get_assets
+    from dimos.utils.data import get_data
+
+    data_dir = Path(str(get_data("mujoco_sim")))
+    scene = (data_dir / "scene_empty.xml").read_text()
+    xml, assets, head_joints = compose_animator_go1_xml(scene, get_assets())
+    assert head_joints == HEAD_JOINTS
+
+    model = mujoco.MjModel.from_xml_string(xml, assets=assets)
+    for j in HEAD_JOINTS:
+        assert mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, j) >= 0

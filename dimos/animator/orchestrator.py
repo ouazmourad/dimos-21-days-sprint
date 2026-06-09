@@ -23,6 +23,7 @@ from dimos.animator.channels import (
     GestureChannel,
     PostureChannel,
 )
+from dimos.animator.channels.expression import ExpressionChannel
 from dimos.animator.channels.gaze import GazeTarget
 from dimos.animator.channels.posture import PostureTarget
 from dimos.animator.intents.notice_guest import IntentTick
@@ -57,8 +58,10 @@ class PerformanceOrchestrator:
         self._posture = PostureChannel()
         self._gesture = GestureChannel()
         self._breathing = BreathingChannel()
+        self._expression = ExpressionChannel()
         self._mixer = BehaviorMixer(rig)
         self._retargeter = Go2Retargeter(rig)
+        self._last_gaze_yaw = 0.0
 
     @property
     def tick_dt(self) -> float:
@@ -92,11 +95,19 @@ class PerformanceOrchestrator:
         gesture_state = self._gesture.step(self._tick_dt, self._personality)
         breath_state = self._breathing.step(self._tick_dt, self._personality)
 
+        # Feed the expression channel a "surprise" cue from how fast the
+        # gaze is moving — a quick head turn pops the eyes open.
+        gaze_delta = gaze_state.yaw_rad - self._last_gaze_yaw
+        self._last_gaze_yaw = gaze_state.yaw_rad
+        self._expression.notice_surprise(gaze_delta)
+        expr_state = self._expression.step(self._tick_dt, self._personality)
+
         return ChannelState(
             gaze=gaze_state,
             posture=posture_state,
             gesture=gesture_state,
             breathing=breath_state,
+            expression=expr_state,
         )
 
     def run_intent(self, intent: Iterable[IntentTick]) -> Iterator[OrchestratorTick]:

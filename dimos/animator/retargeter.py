@@ -125,4 +125,21 @@ class Go2Retargeter:
         out["FL_thigh_joint"] += -paw * 1.0   # thigh flexes up
         out["FL_calf_joint"] += -paw * 1.5    # calf flexes inward
 
+        # ---- articulated head (only if the model has these joints) ----
+        # Emitted unconditionally; the consumer writes only the joints that
+        # exist in its model. See dimos/animator/sim_head.py.
+        out["neck_yaw"] = motion.neck_yaw
+        out["neck_pitch"] = motion.neck_pitch
+
+        # Eyelids: openness 1.0 → lids up (open, small negative angle);
+        # openness 0.0 → lids swept down over the eye (~1.4 rad).
+        lid_angle = 1.4 - 1.7 * motion.eye_openness
+        out["lid_l"] = lid_angle
+        out["lid_r"] = lid_angle
+
+        # Brows: brow_raise +1 → raised (positive pitch), -1 → lowered.
+        brow_angle = 0.45 * motion.brow_raise
+        out["brow_l"] = brow_angle
+        out["brow_r"] = brow_angle
+
         return JointCommand(angles=out)
