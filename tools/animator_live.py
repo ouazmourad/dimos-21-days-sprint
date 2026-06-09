@@ -3,33 +3,38 @@
 Opens a MuJoCo viewer with the wooden expressive-head Go2 and runs the
 layered animation engine in real time. The background idle layer is
 always on (gaze drift, breathing, blinks); you trigger artist intents
-and switch personalities live from the keyboard.
+and switch personalities live — by typing single keys in THIS TERMINAL
+(not the viewer window, which reserves its own keys for render toggles).
 
 Run:
     python tools/animator_live.py
-    # (sets MUJOCO_GL=glfw itself; needs a display)
 
-Keyboard (focus the MuJoCo window, not the terminal):
+Controls (type in the terminal, no Enter needed):
     1  curious      2  shy        3  proud
     4  nervous      5  calm
-    N  notice guest      C  curious head-tilt
-    P  proud chest-lift  R  search room ("look around")
-    SPACE  stop the current intent (return to idle)
+    n  notice guest         c  curious head-tilt
+    p  proud chest-lift     r  search room ("look around")
+    space  return to idle
+    q  quit
 
-The current personality + state is printed to the terminal on each
-change. Mouse-orbit the viewer as usual.
+Mouse-orbit / zoom the viewer window as usual.
 """
 
 from __future__ import annotations
 
+import atexit
 import os
+import queue
+import select
 import sys
+import termios
+import threading
 import time
+import tty
 from pathlib import Path
 
-# Interactive viewer needs a real GL backend, not the headless EGL one.
-os.environ["MUJOCO_GL"] = "glfw"
-os.environ.setdefault("CI", "1")  # skip the LCM/sudo system-config prompt
+os.environ["MUJOCO_GL"] = "glfw"      # interactive viewer needs real GL
+os.environ.setdefault("CI", "1")       # skip the LCM/sudo system-config prompt
 
 import mujoco
 import mujoco.viewer
@@ -52,11 +57,21 @@ from dimos.animator.sim_head import HEAD_JOINTS, compose_animator_go1_xml
 from dimos.simulation.mujoco.model import get_assets
 from dimos.utils.data import get_data
 
-PERSONALITIES = ("curious", "shy", "proud", "nervous", "calm")
+PERSONALITIES = {"1": "curious", "2": "shy", "3": "proud", "4": "nervous", "5": "calm"}
+TICK_DT = 1.0 / 50.0
 
-# GLFW key codes.
-_K_1, _K_5 = 49, 53
-_K_N, _K_C, _K_P, _K_R, _K_SPACE = 78, 67, 80, 82, 32
+
+def _stdin_reader(cmd_q: "queue.Queue[str]", stop: threading.Event) -> None:
+    """Read single keypresses from the terminal (raw mode) into a queue."""
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    atexit.register(termios.tcsetattr, fd, termios.TCSADRAIN, old)
+    tty.setcbreak(fd)
+    while not stop.is_set():
+        r, _, _ = select.select([sys.stdin], [], [], 0.1)
+        if r:
+            ch = sys.stdin.read(1)
+            cmd_q.put(ch)
 
 
 def main() -> None:
@@ -73,81 +88,90 @@ def main() -> None:
         jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, j)
         if jid >= 0:
             jq[j] = model.jnt_qposadr[jid]
+    head_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "head")
 
-    # Mutable demo state, rebuilt on personality switch.
-    state = {"name": "curious"}
-
-    def build_engine(name: str):
+    def build(name: str):
         p = Personality.from_yaml(ROOT / f"data/animator/personalities/{name}.yaml")
-        orch = PerformanceOrchestrator(rig, p, tick_hz=50.0)
-        eng = AnimationEngine(orch, p)
-        return p, eng
+        return p, AnimationEngine(PerformanceOrchestrator(rig, p, tick_hz=50.0), p)
 
-    personality, engine = build_engine(state["name"])
-    engine_dt = 1.0 / 50.0  # engine / orchestrator tick period
+    name = "curious"
+    personality, engine = build(name)
 
     def banner() -> None:
         p = personality
         print(
-            f"\n[ {state['name'].upper():8s} ]  "
-            f"cur={p.curiosity:+.1f} en={p.energy:+.1f} conf={p.confidence:+.1f} "
-            f"soft={p.softness:+.1f} play={p.playfulness:+.1f}"
-            f"   {'PLAYING' if engine.is_playing else 'idle'}",
+            f"[ {name.upper():8s} ] cur={p.curiosity:+.1f} en={p.energy:+.1f} "
+            f"conf={p.confidence:+.1f} soft={p.softness:+.1f} play={p.playfulness:+.1f}",
             flush=True,
         )
 
-    def key_callback(keycode: int) -> None:
-        nonlocal personality, engine
-        if _K_1 <= keycode <= _K_5:
-            idx = keycode - _K_1
-            if idx < len(PERSONALITIES):
-                state["name"] = PERSONALITIES[idx]
-                personality, engine = build_engine(state["name"])
-                banner()
-        elif keycode == _K_N:
-            engine.trigger(notice_guest(0.6, 0.25, personality, tick_dt=engine_dt))
-            print("  -> notice_guest", flush=True)
-        elif keycode == _K_C:
-            engine.trigger(curious_head_tilt(direction=1, personality=personality, tick_dt=engine_dt))
-            print("  -> curious_head_tilt", flush=True)
-        elif keycode == _K_P:
-            engine.trigger(proud_chest_lift(personality=personality, tick_dt=engine_dt))
-            print("  -> proud_chest_lift", flush=True)
-        elif keycode == _K_R:
-            engine.trigger(search_room(yaw_range_rad=0.6, n_stops=5,
-                                       personality=personality, tick_dt=engine_dt))
-            print("  -> search_room", flush=True)
-        elif keycode == _K_SPACE:
-            # Re-trigger an empty/finished clip = drop back to idle.
-            personality, engine = build_engine(state["name"])
-            print("  -> stop (idle)", flush=True)
+    cmd_q: "queue.Queue[str]" = queue.Queue()
+    stop = threading.Event()
+    reader = threading.Thread(target=_stdin_reader, args=(cmd_q, stop), daemon=True)
+    reader.start()
 
     print(__doc__)
     banner()
 
+    def handle(ch: str) -> bool:
+        """Return False to quit."""
+        nonlocal personality, engine, name
+        if ch in PERSONALITIES:
+            name = PERSONALITIES[ch]
+            personality, engine = build(name)
+            banner()
+        elif ch == "n":
+            engine.trigger(notice_guest(0.6, 0.25, personality, tick_dt=TICK_DT))
+            print("  -> notice_guest", flush=True)
+        elif ch == "c":
+            engine.trigger(curious_head_tilt(direction=1, personality=personality, tick_dt=TICK_DT))
+            print("  -> curious_head_tilt", flush=True)
+        elif ch == "p":
+            engine.trigger(proud_chest_lift(personality=personality, tick_dt=TICK_DT))
+            print("  -> proud_chest_lift", flush=True)
+        elif ch == "r":
+            engine.trigger(search_room(yaw_range_rad=0.6, n_stops=5,
+                                       personality=personality, tick_dt=TICK_DT))
+            print("  -> search_room", flush=True)
+        elif ch == " ":
+            personality, engine = build(name)
+            print("  -> idle", flush=True)
+        elif ch in ("q", "\x03"):  # q or Ctrl-C
+            return False
+        return True
+
     with mujoco.viewer.launch_passive(
         model, data, show_left_ui=False, show_right_ui=False,
-        key_callback=key_callback,
     ) as viewer:
-        # Frame the head nicely.
         viewer.cam.distance = 1.1
         viewer.cam.azimuth = 150
         viewer.cam.elevation = -12
-        head_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "head")
         viewer.cam.lookat[:] = data.xpos[head_id]
 
         while viewer.is_running():
             t0 = time.perf_counter()
+
+            # Drain any pending keypresses.
+            try:
+                while True:
+                    if not handle(cmd_q.get_nowait()):
+                        stop.set()
+                        return
+            except queue.Empty:
+                pass
+
             tick = engine.tick()
             for nm, v in tick.command.angles.items():
                 if nm in jq:
                     data.qpos[jq[nm]] = v
             mujoco.mj_forward(model, data)
             viewer.sync()
-            # Real-time pace at 50 Hz.
-            dt = engine_dt - (time.perf_counter() - t0)
+
+            dt = TICK_DT - (time.perf_counter() - t0)
             if dt > 0:
                 time.sleep(dt)
+
+    stop.set()
 
 
 if __name__ == "__main__":
