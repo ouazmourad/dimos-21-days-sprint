@@ -37,12 +37,20 @@ class ExpressionChannel:
         self._blink_timer_s = 0.0
         self._blink_active_s = 0.0
         self._surprise = 0.0
+        # Director overrides (the show's "sleep" beat etc). ``None`` =
+        # personality drives the value as usual.
+        self.override_openness: float | None = None
+        self.override_brow: float | None = None
 
     def _baseline_openness(self, p: Personality) -> float:
+        if self.override_openness is not None:
+            return self.override_openness
         v = 0.5 + 0.45 * p.curiosity + 0.22 * p.confidence + 0.12 * p.energy
         return max(0.12, min(1.0, v))
 
     def _baseline_brow(self, p: Personality) -> float:
+        if self.override_brow is not None:
+            return self.override_brow
         # Curious / playful raise the brows; low confidence pulls the inner
         # corners up into a worried tilt (negative), high confidence flat.
         v = 0.6 * p.curiosity + 0.25 * p.playfulness

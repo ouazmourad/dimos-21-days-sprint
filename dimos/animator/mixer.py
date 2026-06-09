@@ -23,9 +23,11 @@ from dataclasses import dataclass, field
 
 from dimos.animator.channels.breathing import BreathingState
 from dimos.animator.channels.expression import ExpressionState
+from dimos.animator.channels.eyes import EyesState
 from dimos.animator.channels.gaze import GazeTarget
 from dimos.animator.channels.gesture import GestureState
 from dimos.animator.channels.posture import PostureTarget
+from dimos.animator.channels.secondary import SecondaryState
 from dimos.animator.rig import CharacterRig
 
 # Priority order — last write wins among the channels listed here in
@@ -43,6 +45,8 @@ class ChannelState:
     gesture: GestureState = field(default_factory=GestureState)
     breathing: BreathingState = field(default_factory=BreathingState)
     expression: ExpressionState = field(default_factory=ExpressionState)
+    eyes: EyesState = field(default_factory=EyesState)
+    secondary: SecondaryState = field(default_factory=SecondaryState)
 
 
 @dataclass
@@ -69,6 +73,12 @@ class MixedMotion:
     neck_pitch: float = 0.0
     eye_openness: float = 0.7   # [0, 1]
     brow_raise: float = 0.0     # [-1, 1]
+    eyes_yaw: float = 0.0       # eyeball rotation (saccades)
+    eyes_pitch: float = 0.0
+    ear_l: float = 0.0          # ear hinge angles (perk/flop)
+    ear_r: float = 0.0
+    tail_yaw: float = 0.0       # wag
+    tail_pitch: float = 0.0     # carriage
 
 
 class BehaviorMixer:
@@ -128,4 +138,10 @@ class BehaviorMixer:
             neck_pitch=out.get("neck_pitch", 0.0) + snapshot.expression.head_pitch,
             eye_openness=snapshot.expression.eye_openness,
             brow_raise=snapshot.expression.brow_raise,
+            eyes_yaw=snapshot.eyes.yaw,
+            eyes_pitch=snapshot.eyes.pitch,
+            ear_l=snapshot.secondary.ear_l,
+            ear_r=snapshot.secondary.ear_r,
+            tail_yaw=snapshot.secondary.tail_yaw,
+            tail_pitch=snapshot.secondary.tail_pitch,
         )

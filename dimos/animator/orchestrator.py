@@ -24,7 +24,9 @@ from dimos.animator.channels import (
     PostureChannel,
 )
 from dimos.animator.channels.expression import ExpressionChannel
+from dimos.animator.channels.eyes import EyesChannel
 from dimos.animator.channels.gaze import GazeTarget
+from dimos.animator.channels.secondary import SecondaryMotionChannel
 from dimos.animator.channels.posture import PostureTarget
 from dimos.animator.intents.notice_guest import IntentTick
 from dimos.animator.mixer import BehaviorMixer, ChannelState
@@ -59,9 +61,16 @@ class PerformanceOrchestrator:
         self._gesture = GestureChannel()
         self._breathing = BreathingChannel()
         self._expression = ExpressionChannel()
+        self._eyes = EyesChannel()
+        self._secondary = SecondaryMotionChannel()
         self._mixer = BehaviorMixer(rig)
         self._retargeter = Go2Retargeter(rig)
         self._last_gaze_yaw = 0.0
+
+    def set_walking(self, walking: bool) -> None:
+        """Tell the secondary-motion channel locomotion is active (tail
+        wags more while trotting)."""
+        self._secondary.set_walking(walking)
 
     @property
     def tick_dt(self) -> float:
@@ -88,6 +97,8 @@ class PerformanceOrchestrator:
             self._posture.set_target(posture_target)
         if fire_gesture is not None:
             self._gesture.trigger(fire_gesture, self._personality)
+            # A deliberate gesture is an emotional beat — wag the tail.
+            self._secondary.excite(0.9)
 
         # Then step every channel forward by ``tick_dt``.
         gaze_state = self._gaze.step(self._tick_dt, self._personality)
@@ -102,12 +113,29 @@ class PerformanceOrchestrator:
         self._expression.notice_surprise(gaze_delta)
         expr_state = self._expression.step(self._tick_dt, self._personality)
 
+        # Eyes lead, head follows: the eyes snap toward the REMAINING
+        # gaze error (target minus where the slow neck currently points)
+        # and recentre as the neck catches up — the saccade/VOR cascade.
+        err_yaw = self._gaze._target.yaw_rad - gaze_state.yaw_rad   # noqa: SLF001
+        err_pitch = self._gaze._target.pitch_rad - gaze_state.pitch_rad  # noqa: SLF001
+        eyes_state = self._eyes.step(
+            self._tick_dt, self._personality, err_yaw, err_pitch,
+        )
+
+        # Ears + tail: springs kicked by neck motion, set by mood.
+        secondary_state = self._secondary.step(
+            self._tick_dt, self._personality,
+            neck_yaw=gaze_state.yaw_rad, neck_pitch=gaze_state.pitch_rad,
+        )
+
         return ChannelState(
             gaze=gaze_state,
             posture=posture_state,
             gesture=gesture_state,
             breathing=breath_state,
             expression=expr_state,
+            eyes=eyes_state,
+            secondary=secondary_state,
         )
 
     def run_intent(self, intent: Iterable[IntentTick]) -> Iterator[OrchestratorTick]:

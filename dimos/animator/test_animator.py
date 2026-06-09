@@ -453,3 +453,97 @@ def test_engine_lowpass_bounds_action_acceleration(
     # The gesture-driven calf has one sharp transient at the paw-wave
     # onset (a crisp, deliberately big gesture), but stays bounded.
     assert max(accels(calf)) < 0.15
+
+
+# Eyes (saccades) ---------------------------------------------------------
+
+def test_eyes_saccade_toward_error_then_recentre(curious: Personality) -> None:
+    from dimos.animator.channels.eyes import EyesChannel
+    ec = EyesChannel(seed=3)
+    # Big gaze error: eyes should snap most of the way within 0.2 s.
+    state = None
+    for _ in range(10):
+        state = ec.step(1 / 50, curious, gaze_error_yaw=0.4, gaze_error_pitch=0.0)
+    assert state is not None and state.yaw > 0.25
+    # Error gone (head caught up): eyes recentre quickly.
+    for _ in range(25):
+        state = ec.step(1 / 50, curious, gaze_error_yaw=0.0, gaze_error_pitch=0.0)
+    assert abs(state.yaw) < 0.12  # micro-saccades may leave tiny offsets
+
+
+def test_eyes_clamped_to_eyeball_range(curious: Personality) -> None:
+    from dimos.animator.channels.eyes import EyesChannel
+    ec = EyesChannel(seed=3)
+    state = None
+    for _ in range(60):
+        state = ec.step(1 / 50, curious, gaze_error_yaw=5.0, gaze_error_pitch=5.0)
+    assert state is not None
+    assert state.yaw <= 0.56 and state.pitch <= 0.46
+
+
+# Secondary motion (ears + tail) ------------------------------------------
+
+def test_secondary_mood_mapping(curious: Personality, shy: Personality) -> None:
+    from dimos.animator.channels.secondary import SecondaryMotionChannel
+    sc_shy = SecondaryMotionChannel()
+    sc_cur = SecondaryMotionChannel()
+    shy_state = cur_state = None
+    for _ in range(150):  # 3 s to let springs settle
+        shy_state = sc_shy.step(1 / 50, shy, 0.0, 0.0)
+        cur_state = sc_cur.step(1 / 50, curious, 0.0, 0.0)
+    # Shy: tail tucked (positive pitch), ears drooped (positive angle).
+    assert shy_state.tail_pitch > 0.4
+    assert shy_state.ear_l > 0.25
+    # Curious: ears markedly more perked than shy (≈0.28 rad apart).
+    assert cur_state.ear_l < shy_state.ear_l - 0.25
+
+
+def test_secondary_excite_wags_tail(curious: Personality) -> None:
+    from dimos.animator.channels.secondary import SecondaryMotionChannel
+    sc = SecondaryMotionChannel()
+    for _ in range(50):
+        sc.step(1 / 50, curious, 0.0, 0.0)
+    sc.excite(0.9)
+    yaws = [sc.step(1 / 50, curious, 0.0, 0.0).tail_yaw for _ in range(100)]
+    # Excited tail oscillates with visible amplitude.
+    assert max(yaws) - min(yaws) > 0.25
+
+
+# Gait v2 (ramps + foot sync) ---------------------------------------------
+
+def test_gait_ramps_in_and_out(rig: CharacterRig, curious: Personality) -> None:
+    from dimos.animator.gait import GaitGenerator
+    g = GaitGenerator(rig.default_pose)
+    out = g.step(1 / 50, curious)
+    assert out.weight == 0.0 and out.base_dx == 0.0
+    g.set_active(True)
+    w_first = g.step(1 / 50, curious).weight
+    assert 0.0 < w_first < 1.0          # ramping, not snapping
+    for _ in range(60):
+        out = g.step(1 / 50, curious)
+    assert out.weight == pytest.approx(1.0)
+    assert out.base_dx > 0.0
+    g.set_active(False)
+    for _ in range(60):
+        out = g.step(1 / 50, curious)
+    assert out.weight == 0.0
+    # Fully stopped → exactly the standing pose, zero base motion.
+    assert out.base_dx == 0.0
+    for j, v in out.leg_angles.items():
+        assert v == pytest.approx(rig.default_pose[j])
+
+
+# Expression override (the show's sleep beat) ------------------------------
+
+def test_expression_override_closes_eyes(curious: Personality) -> None:
+    from dimos.animator.channels.expression import ExpressionChannel
+    ec = ExpressionChannel()
+    ec.override_openness = 0.0
+    state = None
+    for _ in range(100):
+        state = ec.step(1 / 50, curious)
+    assert state is not None and state.eye_openness < 0.06
+    ec.override_openness = None
+    for _ in range(100):
+        state = ec.step(1 / 50, curious)
+    assert state.eye_openness > 0.5  # back to curious-wide

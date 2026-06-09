@@ -144,4 +144,16 @@ class Go2Retargeter:
         out["brow_l"] = brow_angle
         out["brow_r"] = brow_angle
 
+        # Eyeballs — both eyes share the saccade command (no vergence yet).
+        out["eye_l_yaw"] = motion.eyes_yaw
+        out["eye_r_yaw"] = motion.eyes_yaw
+        out["eye_l_pitch"] = motion.eyes_pitch
+        out["eye_r_pitch"] = motion.eyes_pitch
+
+        # Ears + tail: spring states pass straight through.
+        out["ear_l"] = motion.ear_l
+        out["ear_r"] = motion.ear_r
+        out["tail_yaw"] = motion.tail_yaw
+        out["tail_pitch"] = motion.tail_pitch
+
         return JointCommand(angles=out)

@@ -148,9 +148,9 @@ def main() -> None:
             print("  -> search_room", flush=True)
         elif ch == "w":
             walk["on"] = not walk["on"]
-            if walk["on"]:
-                gait.reset()
-            else:
+            gait.set_active(walk["on"])
+            engine._orch.set_walking(walk["on"])  # noqa: SLF001 — tail wags while trotting
+            if not walk["on"]:
                 walk["turn"] = 0.0
             print(f"  -> walk {'ON' if walk['on'] else 'off'}", flush=True)
         elif ch == "a":
@@ -162,6 +162,7 @@ def main() -> None:
         elif ch == " ":
             personality, engine = build(name)
             walk["on"] = False
+            gait.set_active(False)
             walk["turn"] = 0.0
             print("  -> idle", flush=True)
         elif ch in ("q", "\x03"):  # q or Ctrl-C
@@ -194,15 +195,19 @@ def main() -> None:
                 if nm in jq:
                     data.qpos[jq[nm]] = v
 
-            # While walking, the gait OWNS the 12 leg joints and moves the
-            # base across the floor; the expressive head keeps riding on top.
-            if walk["on"]:
-                out = gait.step(TICK_DT, personality, turn=walk["turn"])
+            # The gait is ALWAYS stepped so its start/stop ramps complete;
+            # while it has weight it owns the 12 leg joints and moves the
+            # base, and the expressive head keeps riding on top.
+            out = gait.step(TICK_DT, personality, turn=walk["turn"])
+            if out.weight > 0.0:
+                # Crossfade legs between the engine's expressive pose and
+                # the gait by the gait's own ramp weight — buttery starts
+                # and stops even mid-emote.
                 for nm, v in out.leg_angles.items():
-                    data.qpos[jq[nm]] = v
+                    prev = data.qpos[jq[nm]]
+                    data.qpos[jq[nm]] = prev + (v - prev) * out.weight
                 walk["yaw"] += out.base_dyaw
                 cy, sy = math.cos(walk["yaw"] / 2), math.sin(walk["yaw"] / 2)
-                # Advance in the current heading direction.
                 data.qpos[base_adr + 0] += out.base_dx * math.cos(walk["yaw"])
                 data.qpos[base_adr + 1] += out.base_dx * math.sin(walk["yaw"])
                 data.qpos[base_adr + 2] = base_z0 + out.base_dz
