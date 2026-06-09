@@ -28,6 +28,7 @@ from dimos.animator.personality import Personality
 class ExpressionState:
     eye_openness: float = 0.7   # [0, 1]
     brow_raise: float = 0.0     # [-1, 1]
+    head_pitch: float = 0.0     # rad; + = chin up (proud), - = chin down (shy)
 
 
 class ExpressionChannel:
@@ -83,7 +84,13 @@ class ExpressionChannel:
         alpha = min(1.0, dt / max(0.01, tau))
         self._openness += (target - self._openness) * alpha
 
+        # Chin carriage: confident characters lift the chin, timid /
+        # low-confidence ones drop it. Small range so it reads as posture,
+        # not a full head-tilt.
+        head_pitch = 0.22 * personality.confidence
+
         return ExpressionState(
             eye_openness=max(0.0, min(1.0, self._openness)),
             brow_raise=self._baseline_brow(personality),
+            head_pitch=head_pitch,
         )

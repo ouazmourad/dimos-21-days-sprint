@@ -123,7 +123,9 @@ class BehaviorMixer:
             trunk_z_breath=self._clamp("trunk_z_breath", out.get("trunk_z_breath", 0.0)),
             paw_lift_fl=self._clamp("paw_lift_fl", out.get("paw_lift_fl", 0.0)),
             neck_yaw=out.get("neck_yaw", 0.0),
-            neck_pitch=out.get("neck_pitch", 0.0),
+            # Neck pitch = gaze pitch (looking at the target) + a personality
+            # chin-carriage bias (confident = chin up, timid = chin down).
+            neck_pitch=out.get("neck_pitch", 0.0) + snapshot.expression.head_pitch,
             eye_openness=snapshot.expression.eye_openness,
             brow_raise=snapshot.expression.brow_raise,
         )

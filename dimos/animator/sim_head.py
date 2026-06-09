@@ -98,10 +98,13 @@ def _add_eye(head: ET.Element, side: str, y: float) -> None:
         material="wood_skin", contype="0", conaffinity="0", group="1", mass="0",
     )
 
-    # Brow — a flat wood bar sitting just above the eye, hugging the head
-    # surface. Pivot above the eye; +pitch raises the outer end.
+    # Brow — a small flat wood bar resting just above the eye on the
+    # front of the head (not on top, so it reads as a brow, not an ear).
+    # Pivot at the brow centre; +pitch lifts the forward edge (raised /
+    # curious), -pitch drops it (furrowed / focused). Wide across the eye
+    # (y), thin forward (x) and vertically (z).
     brow = ET.SubElement(
-        head, "body", name=f"brow_{side}", pos=f"{ex + 0.01} {y} {ez + 0.062}",
+        head, "body", name=f"brow_{side}", pos=f"{ex + 0.02} {y} {ez + 0.052}",
     )
     _tiny_inertial(brow)
     ET.SubElement(
@@ -109,7 +112,7 @@ def _add_eye(head: ET.Element, side: str, y: float) -> None:
         range="-0.6 0.6", damping="0", stiffness="0", limited="true",
     )
     ET.SubElement(
-        brow, "geom", type="box", pos="0.012 0 0", size="0.042 0.013 0.009",
+        brow, "geom", type="box", pos="0 0 0", size="0.016 0.042 0.008",
         material="wood_skin_dark", contype="0", conaffinity="0", group="1", mass="0",
     )
 

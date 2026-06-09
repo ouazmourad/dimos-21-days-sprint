@@ -131,14 +131,16 @@ class Go2Retargeter:
         out["neck_yaw"] = motion.neck_yaw
         out["neck_pitch"] = motion.neck_pitch
 
-        # Eyelids: openness 1.0 → lids up (open, small negative angle);
-        # openness 0.0 → lids swept down over the eye (~1.4 rad).
-        lid_angle = 1.4 - 1.7 * motion.eye_openness
+        # Eyelids (calibrated against the sim head geometry):
+        #   openness 1.0 → lid ≈ -0.5 rad (tucked up, wide eyes)
+        #   openness 0.0 → lid ≈ +1.1 rad (swept down, eye covered)
+        lid_angle = 1.1 - 1.6 * motion.eye_openness
         out["lid_l"] = lid_angle
         out["lid_r"] = lid_angle
 
-        # Brows: brow_raise +1 → raised (positive pitch), -1 → lowered.
-        brow_angle = 0.45 * motion.brow_raise
+        # Brows: brow_raise +1 → raised (curious/surprised), -1 → furrowed
+        # (focused/worried). Modest gain so the bar stays brow-like.
+        brow_angle = 0.4 * motion.brow_raise
         out["brow_l"] = brow_angle
         out["brow_r"] = brow_angle
 
