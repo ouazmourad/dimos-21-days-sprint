@@ -120,6 +120,7 @@ all_blueprints = {
     "unitree-go2-webrtc-rage-keyboard-teleop": "dimos.robot.unitree.go2.blueprints.basic.unitree_go2_webrtc_rage_keyboard_teleop:unitree_go2_webrtc_rage_keyboard_teleop",
     "unitree-r1-agentic": "dimos.robot.unitree.r1.blueprints.agentic.unitree_r1_agentic:unitree_r1_agentic",
     "unitree-r1-basic": "dimos.robot.unitree.r1.blueprints.basic.unitree_r1_basic:unitree_r1_basic",
+    "unitree-r1-control": "dimos.robot.unitree.r1.blueprints.agentic.unitree_r1_control:unitree_r1_control",
     "unitree-r1-primitive-no-nav": "dimos.robot.unitree.r1.blueprints.primitive.unitree_r1_primitive_no_nav:unitree_r1_primitive_no_nav",
     "unity-sim": "dimos.simulation.unity.blueprint:unity_sim",
     "xarm-perception": "dimos.manipulation.blueprints:xarm_perception",
