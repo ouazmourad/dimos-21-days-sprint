@@ -109,6 +109,13 @@ class R1LocoProxy:
     def move(self, twist: Twist, duration: float = 0.0) -> bool:
         vx, vy, vyaw = twist.linear.x, twist.linear.y, twist.angular.z
         dur = duration if duration and duration > 0 else 1.0
+        # Velocity is ignored unless the robot is in Start/locomotion mode (FSM
+        # 811) — in StandUp (4) it just stands there. Enter Start first if needed
+        # (the firmware guards invalid transitions, e.g. from a lying state).
+        if self.get_state() != "811":
+            logger.info("R1 not in locomotion mode (FSM 811); entering Start before moving")
+            self.start_locomotion()
+            time.sleep(2.5)
         self._run(f'--set_velocity="{vx} {vy} {vyaw} {dur}"')
         return True
 
