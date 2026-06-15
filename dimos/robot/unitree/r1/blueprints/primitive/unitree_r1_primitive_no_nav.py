@@ -85,6 +85,12 @@ def _r1_rerun_blueprint() -> Any:
 
 rerun_config = {
     "blueprint": _r1_rerun_blueprint,
+    # Serve the SDK-matched web viewer (auto-opens at http://localhost:9878),
+    # which drains the gRPC stream, instead of the native "dimos-viewer" binary
+    # (version-incompatible here: takes --port, not --connect — never starts).
+    # NOTE: vis_module() runs at IMPORT time, so global_config / .global_config
+    # overrides for rerun_open are not seen; it must be set here in rerun_config.
+    "rerun_open": "web",
     "visual_override": {
         "world/camera_info": _convert_camera_info,
         "world/navigation_costmap": costmap_to_rerun,
@@ -130,12 +136,7 @@ unitree_r1_primitive_no_nav = (
         CostMapper.blueprint(),
         WavefrontFrontierExplorer.blueprint(),
     )
-    # rerun_open="web": serve the SDK-matched web viewer (it *drains* the gRPC
-    # stream) instead of the native "dimos-viewer" binary, which is version-
-    # incompatible in this venv (it takes --port, not --connect) — it never
-    # starts, so nothing consumes the logged data and the host OOM-freezes. The
-    # web viewer is served on web_port 9878.
-    .global_config(n_workers=4, robot_model="unitree_r1", rerun_open="web")
+    .global_config(n_workers=4, robot_model="unitree_r1")
     .transports(
         {
             # R1 uses Twist for movement commands
