@@ -32,7 +32,10 @@ from dimos.robot.unitree.r1.system_prompt import R1_SYSTEM_PROMPT
 # streams reach DimOS (matching IDL types or a PC1 sensor bridge).
 _agentic_skills = autoconnect(
     McpServer.blueprint(),
-    McpClient.blueprint(system_prompt=R1_SYSTEM_PROMPT),
+    # Use Claude via the ANTHROPIC_API_KEY. The McpClient default model is
+    # "gpt-4o" (OpenAI); without an OPENAI_API_KEY the agent hangs forever at
+    # "thinking..." because the LLM call never returns.
+    McpClient.blueprint(model="anthropic:claude-sonnet-4-6", system_prompt=R1_SYSTEM_PROMPT),
     WebInput.blueprint(),
     SpeakSkill.blueprint(),
     UnitreeR1SkillContainer.blueprint(),
