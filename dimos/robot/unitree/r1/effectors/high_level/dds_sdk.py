@@ -14,12 +14,16 @@
 
 """R1 high-level control via native Unitree SDK2 (DDS).
 
-Mirrors ``dimos/robot/unitree/g1/effectors/high_level/dds_sdk.py`` file-for-file.
-The R1 is a 26-DOF humanoid (education edition) that speaks the same
-``unitree_sdk2py``/CycloneDDS protocol family as the G1, so this is a faithful
-clone of the G1 native-SDK client with every R1-specific unknown flagged with a
-``TODO(R1)`` comment (the values currently mirror G1 and must be confirmed
-against the R1 SDK/docs).
+The R1 (education-edition humanoid) speaks the ``unitree_hg``/CycloneDDS
+protocol family. Loco control goes through the "sport" service; the FSM ids and
+api ids below are confirmed against the robot's own ``unitree_sdk2`` on PC1
+(``include/unitree/robot/r1/loco/``). They differ from the G1 — notably StandUp
+is FSM id 4 (not 702) and Start is 811 (not 200).
+
+Runtime requirement: this needs a ``unitree_sdk2py`` whose IDL matches the R1
+firmware. The pip ``unitree-sdk2py-dimos`` 1.0.3 is OLDER than the R1 firmware,
+so its DDS types fail XTypes type-consistency and match zero endpoints — control
+must run with a matching SDK (e.g. on PC1, or with regenerated R1 IDL types).
 """
 
 from enum import IntEnum
@@ -55,13 +59,13 @@ logger = setup_logger()
 
 
 class FsmState(IntEnum):
-    # TODO(R1): confirm against R1 SDK/docs — currently mirrors G1 FsmState enum ids.
+    # Confirmed against the R1's own unitree_sdk2 on PC1
+    # (include/unitree/robot/r1/loco/r1_loco_client.hpp). The R1's FSM ids differ
+    # from the G1's: StandUp is a single id (4) and Start is 811.
     ZERO_TORQUE = 0
     DAMP = 1
-    SIT = 3
-    AI_MODE = 200
-    LIE_TO_STANDUP = 702
-    SQUAT_STANDUP_TOGGLE = 706
+    STAND_UP = 4
+    START = 811
 
 
 class R1HighLevelDdsSdkConfig(ModuleConfig):
@@ -124,8 +128,11 @@ class R1HighLevelDdsSdk(Module, HighLevelG1Spec):
         # TODO(R1): confirm against R1 SDK/docs — currently mirrors G1. The loco
         # client/api may live under unitree_sdk2py.r1.loco or a generic humanoid
         # client; keeping the G1 path until the R1 SDK layout is confirmed.
+        # GET_FSM_ID (7001) / GET_FSM_MODE (7002) / SET_FSM_ID (7101) /
+        # SET_VELOCITY (7105) are identical on the R1 (confirmed from PC1's
+        # r1_loco_api.hpp). The R1 has no GET_BALANCE_MODE; it adds
+        # SET_SPEED_MODE (7107) instead.
         from unitree_sdk2py.g1.loco.g1_loco_api import (
-            ROBOT_API_ID_LOCO_GET_BALANCE_MODE,
             ROBOT_API_ID_LOCO_GET_FSM_ID,
             ROBOT_API_ID_LOCO_GET_FSM_MODE,
         )
@@ -134,7 +141,6 @@ class R1HighLevelDdsSdk(Module, HighLevelG1Spec):
         self._loco_api_ids = {
             "GET_FSM_ID": ROBOT_API_ID_LOCO_GET_FSM_ID,
             "GET_FSM_MODE": ROBOT_API_ID_LOCO_GET_FSM_MODE,
-            "GET_BALANCE_MODE": ROBOT_API_ID_LOCO_GET_BALANCE_MODE,
         }
 
         network_interface = self.config.network_interface
@@ -156,7 +162,6 @@ class R1HighLevelDdsSdk(Module, HighLevelG1Spec):
 
         self.loco_client._RegistApi(self._loco_api_ids["GET_FSM_ID"], 0)
         self.loco_client._RegistApi(self._loco_api_ids["GET_FSM_MODE"], 0)
-        self.loco_client._RegistApi(self._loco_api_ids["GET_BALANCE_MODE"], 0)
 
         self._select_motion_mode()
         self._running = True
@@ -252,8 +257,9 @@ class R1HighLevelDdsSdk(Module, HighLevelG1Spec):
         parameter = data.get("parameter", {})
 
         try:
-            # TODO(R1): confirm against R1 SDK/docs — currently mirrors G1 api_ids
-            # (SET_FSM_ID=7101, SET_VELOCITY=7105).
+            # Confirmed against PC1's r1_loco_api.hpp: SET_FSM_ID=7101,
+            # SET_VELOCITY=7105 (identical to the G1). The R1 also has
+            # SET_SPEED_MODE=7107.
             API_SET_FSM_ID = 7101
             API_SET_VELOCITY = 7105
             if api_id == API_SET_FSM_ID:
@@ -276,35 +282,21 @@ class R1HighLevelDdsSdk(Module, HighLevelG1Spec):
 
     @rpc
     def stand_up(self) -> bool:
+        # On the R1, StandUp is a single FSM transition to id 4 (confirmed from
+        # PC1's r1_loco_client.hpp — there is no Squat2/Lie2 distinction). From a
+        # fully relaxed (zero-torque) state, damp first so the rise starts
+        # controlled.
         assert self.loco_client is not None
         try:
             logger.info(f"Current state before stand_up: {self.get_state()}")
-
-            if self.config.ai_standup:
-                fsm_id = self._get_fsm_id()
-                if fsm_id is None:
-                    logger.warning(
-                        "Could not read FSM ID; aborting stand_up to avoid unsafe state transition"
-                    )
-                    return False
-                if fsm_id == FsmState.ZERO_TORQUE:
-                    logger.info("Robot in zero torque, enabling damp mode...")
-                    self.loco_client.SetFsmId(FsmState.DAMP)
-                    time.sleep(self._standup_step_delay / 3)
-                    # Default to DAMP if the re-query fails — we just commanded
-                    # the transition, so DAMP is the most likely current state.
-                    fsm_id = self._get_fsm_id() or FsmState.DAMP
-                if fsm_id != FsmState.AI_MODE:
-                    logger.info("Starting AI mode...")
-                    self.loco_client.SetFsmId(FsmState.AI_MODE)
-                    time.sleep(self._standup_step_delay / 2)
-            else:
-                logger.info("Enabling damp mode...")
+            fsm_id = self._get_fsm_id()
+            if fsm_id == FsmState.ZERO_TORQUE:
+                logger.info("Robot in zero torque, enabling damp first...")
                 self.loco_client.SetFsmId(FsmState.DAMP)
                 time.sleep(self._standup_step_delay / 3)
 
-            logger.info("Executing Squat2StandUp...")
-            self.loco_client.SetFsmId(FsmState.SQUAT_STANDUP_TOGGLE)
+            logger.info("Executing StandUp (FSM id 4)...")
+            self.loco_client.SetFsmId(FsmState.STAND_UP)
             time.sleep(self._standup_step_delay)
             logger.info(f"Final state: {self.get_state()}")
             return True
@@ -314,13 +306,11 @@ class R1HighLevelDdsSdk(Module, HighLevelG1Spec):
 
     @rpc
     def lie_down(self) -> bool:
+        # The R1 loco client exposes no Squat/Sit (both commented out in
+        # r1_loco_client.hpp); Damp (FSM id 1) is the safe relaxed state.
         assert self.loco_client is not None
         try:
-            # TODO(R1): confirm against R1 SDK/docs — currently mirrors G1
-            # LocoClient method names (StandUp2Squat, Damp).
-            self.loco_client.StandUp2Squat()
-            time.sleep(self._standup_step_delay / 3)
-            self.loco_client.Damp()
+            self.loco_client.SetFsmId(FsmState.DAMP)
             return True
         except Exception as e:
             logger.error(f"Lie down failed: {e}")
