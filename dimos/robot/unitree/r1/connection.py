@@ -25,6 +25,7 @@ from dimos.core.stream import In
 from dimos.msgs.geometry_msgs.Twist import Twist
 from dimos.robot.unitree.connection import UnitreeWebRTCConnection
 from dimos.robot.unitree.r1.effectors.high_level.dds_sdk import R1HighLevelDdsSdk
+from dimos.robot.unitree.r1.effectors.high_level.loco_proxy import R1LocoProxy
 from dimos.utils.logging_config import setup_logger
 
 logger = setup_logger()
@@ -35,11 +36,21 @@ class R1Config(ModuleConfig):
     # TODO(R1): confirm against R1 SDK/docs — currently mirrors G1 ("eth0").
     network_interface: str = "eth0"
     connection_type: str = Field(default_factory=lambda m: m["g"].unitree_connection_type)
-    # Real-hardware control backend: "webrtc" (the Go2/G1 production path — uses
-    # the robot's WebRTC data channel, no SDK install needed) or "dds" (native
-    # unitree_sdk2py, needs the [unitree-dds] extra). Default webrtc, as it's the
-    # most likely path to work first on an R1 (the SDK has no r1 loco package yet).
-    backend: str = "webrtc"
+    # Real-hardware control backend:
+    #   "pc1"    — proxy loco commands to PC1's native r1_loco_client over SSH.
+    #              The working path on a real R1: PC1's unitree_sdk2 matches the
+    #              firmware, so commands reach the robot.
+    #   "dds"    — native unitree_sdk2py on this host (needs the [unitree-dds]
+    #              extra AND an SDK whose IDL matches the R1 firmware; pip 1.0.3
+    #              does NOT — XTypes type-consistency rejects all endpoints).
+    #   "webrtc" — Go2/G1 data-channel path; the R1 brokers WebRTC over DDS with
+    #              no HTTP /offer server, so this does not apply to the R1.
+    backend: str = "pc1"
+    # PC1 (onboard Jetson) SSH-proxy settings for the "pc1" backend. The password
+    # is read from the R1_PC1_PASS env var by R1LocoProxy (Unitree default "123").
+    pc1_host: str = "192.168.123.164"
+    pc1_user: str = "unitree"
+    pc1_interface: str = "eth10"
 
 
 class R1ConnectionBase(Module, ABC):
@@ -74,7 +85,7 @@ class R1ConnectionBase(Module, ABC):
 class R1Connection(R1ConnectionBase):
     config: R1Config
     cmd_vel: In[Twist]
-    connection: UnitreeWebRTCConnection | R1HighLevelDdsSdk | None = None
+    connection: UnitreeWebRTCConnection | R1HighLevelDdsSdk | R1LocoProxy | None = None
 
     def __init__(self, *args: Any, g: GlobalConfig = global_config, **kwargs: Any) -> None:
         super().__init__(*args, g=g, **kwargs)
@@ -93,6 +104,15 @@ class R1Connection(R1ConnectionBase):
 
         # Real hardware — pick the control backend (see R1Config.backend).
         match self.config.backend:
+            case "pc1":
+                # Proxy loco commands to PC1's native r1_loco_client over SSH.
+                # PC1's unitree_sdk2 matches the R1 firmware, so commands reach
+                # the robot where this host's pip SDK cannot (type mismatch).
+                self.connection = R1LocoProxy(
+                    host=self.config.pc1_host,
+                    user=self.config.pc1_user,
+                    interface=self.config.pc1_interface,
+                )
             case "webrtc":
                 # WebRTC variant: the same data-channel path DimOS uses in
                 # production for the Go2 and G1. Needs the [unitree] extra
