@@ -99,9 +99,9 @@ _with_vis = vis_module(viewer_backend=global_config.viewer, rerun_config=rerun_c
 
 def _create_r1_camera() -> R1PC1Camera:
     # The R1's own front camera, bridged from PC1 (the laptop can't read the R1's
-    # DDS directly — type mismatch). Streams ~22 fps JPEG over SSH and emits DimOS
-    # Image messages. Replaces the laptop webcam the G1 mirror used.
-    return R1PC1Camera(fps=15)
+    # DDS directly — type mismatch). Throttled + downscaled by R1PC1Camera's tamed
+    # defaults (5 fps, 640x360) so the live dashboard doesn't flood memory.
+    return R1PC1Camera()
 
 
 _camera = (
@@ -130,7 +130,12 @@ unitree_r1_primitive_no_nav = (
         CostMapper.blueprint(),
         WavefrontFrontierExplorer.blueprint(),
     )
-    .global_config(n_workers=4, robot_model="unitree_r1")
+    # rerun_open="web": serve the SDK-matched web viewer (it *drains* the gRPC
+    # stream) instead of the native "dimos-viewer" binary, which is version-
+    # incompatible in this venv (it takes --port, not --connect) — it never
+    # starts, so nothing consumes the logged data and the host OOM-freezes. The
+    # web viewer is served on web_port 9878.
+    .global_config(n_workers=4, robot_model="unitree_r1", rerun_open="web")
     .transports(
         {
             # R1 uses Twist for movement commands

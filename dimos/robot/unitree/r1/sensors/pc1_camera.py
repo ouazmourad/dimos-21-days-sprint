@@ -80,9 +80,12 @@ def _compile_cmd(sdk: str, src: str, out: str) -> str:
 
 class R1PC1CameraConfig(CameraConfig):
     frame_id_prefix: str | None = None
-    width: int = 1280
-    height: int = 720
-    fps: float = 15.0
+    # Tamed defaults for the live dashboard: full-rate 720p is ~60 MB/s over LCM,
+    # which floods Rerun/the browser and can OOM-freeze the host. Frames are
+    # throttled to `fps` and downscaled to width x height. Raise once stable.
+    width: int = 640
+    height: int = 360
+    fps: float = 5.0
     camera_info: CameraInfo = Field(default_factory=CameraInfo)
     # PC1 SSH proxy + paths (password falls back to R1_PC1_PASS env, then "123").
     host: str = "192.168.123.164"
@@ -174,6 +177,8 @@ class R1PC1Camera(CameraHardware):
         chan = stdout.channel
         chan.settimeout(5.0)
         buf = b""
+        min_interval = 1.0 / self.config.fps if self.config.fps > 0 else 0.0
+        last_emit = 0.0
         while not self._stop.is_set():
             try:
                 chunk = chan.recv(65536)
@@ -190,9 +195,19 @@ class R1PC1Camera(CameraHardware):
                 if len(buf) < 4 + ln:
                     break
                 jpg, buf = buf[4 : 4 + ln], buf[4 + ln :]
-                img = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
-                if img is None or self._observer is None or self._stop.is_set():
+                # Throttle to config.fps *before* the expensive decode, so full-rate
+                # 720p doesn't flood LCM/Rerun/the browser and OOM the host.
+                now = time.time()
+                if min_interval > 0 and (now - last_emit) < min_interval:
                     continue
+                if self._observer is None or self._stop.is_set():
+                    continue
+                img = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
+                if img is None:
+                    continue
+                last_emit = now
+                if img.shape[1] != self.config.width or img.shape[0] != self.config.height:
+                    img = cv2.resize(img, (self.config.width, self.config.height))
                 rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                 self._observer.on_next(
                     Image.from_numpy(
