@@ -30,6 +30,7 @@ move) but not for high-rate continuous teleop.
 """
 
 import os
+import time
 from typing import Any
 
 from dimos.msgs.geometry_msgs.Twist import Twist
@@ -70,7 +71,25 @@ class R1LocoProxy:
 
         self._client = paramiko.SSHClient()
         self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self._client.connect(self.host, username=self.user, password=self.password, timeout=10)
+        # The R1 ethernet link can flap (coupler joint), so retry briefly: a
+        # transient blip at startup shouldn't crash the whole run.
+        last_err: Exception | None = None
+        for attempt in range(5):
+            try:
+                self._client.connect(
+                    self.host, username=self.user, password=self.password, timeout=10
+                )
+                break
+            except Exception as e:
+                last_err = e
+                logger.warning(f"PC1 SSH connect {attempt + 1}/5 failed ({e}); retrying in 2s ...")
+                time.sleep(2.0)
+        else:
+            raise RuntimeError(
+                f"Could not SSH to PC1 {self.user}@{self.host}:22 after 5 tries. Is the ethernet "
+                f"link up (`cat /sys/class/net/enp2s0/carrier` should be 1) and PC1 booted? "
+                f"Last error: {last_err}"
+            )
         logger.info(
             f"R1 loco proxy connected: {self.user}@{self.host} -> r1_loco_client (iface {self.interface})"
         )
@@ -95,6 +114,13 @@ class R1LocoProxy:
 
     def stand_up(self) -> bool:
         self._run("--stand_up")
+        return True
+
+    def start_locomotion(self) -> bool:
+        # R1 Start (FSM id 811): enter active balance/locomotion mode. Velocity
+        # commands are ignored in StandUp (4) — the robot must be in Start to
+        # walk or turn.
+        self._run("--start")
         return True
 
     def lie_down(self) -> bool:
