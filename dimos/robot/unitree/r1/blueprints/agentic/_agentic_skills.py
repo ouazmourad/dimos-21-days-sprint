@@ -17,16 +17,23 @@
 
 from dimos.agents.mcp.mcp_client import McpClient
 from dimos.agents.mcp.mcp_server import McpServer
-from dimos.agents.skills.navigation import NavigationSkillContainer
 from dimos.agents.skills.speak_skill import SpeakSkill
+from dimos.agents.web_human_input import WebInput
 from dimos.core.coordination.blueprints import autoconnect
 from dimos.robot.unitree.r1.skill_container import UnitreeR1SkillContainer
 from dimos.robot.unitree.r1.system_prompt import R1_SYSTEM_PROMPT
 
+# NavigationSkillContainer is intentionally omitted: it hard-requires a
+# SpatialMemory module (built from camera/lidar), and the R1's sensor streams do
+# not reach DimOS on the laptop (DDS XTypes type mismatch; no Go2-style WebRTC).
+# WebInput supplies the chat/voice human input (port 5555) that drives the agent;
+# UnitreeR1SkillContainer's move/loco skills reach the robot via the connection's
+# "pc1" backend. Re-add NavigationSkillContainer + a spatial tier once R1 sensor
+# streams reach DimOS (matching IDL types or a PC1 sensor bridge).
 _agentic_skills = autoconnect(
     McpServer.blueprint(),
     McpClient.blueprint(system_prompt=R1_SYSTEM_PROMPT),
-    NavigationSkillContainer.blueprint(),
+    WebInput.blueprint(),
     SpeakSkill.blueprint(),
     UnitreeR1SkillContainer.blueprint(),
 )
