@@ -23,8 +23,7 @@ from dimos.core.coordination.blueprints import autoconnect
 from dimos.core.global_config import global_config
 from dimos.core.transport import LCMTransport
 from dimos.hardware.sensors.camera.module import CameraModule
-from dimos.hardware.sensors.camera.webcam import Webcam
-from dimos.hardware.sensors.camera.zed import compat as zed
+from dimos.robot.unitree.r1.sensors.pc1_camera import R1PC1Camera
 from dimos.mapping.costmapper import CostMapper, costmap_to_rerun
 from dimos.mapping.voxels import VoxelGridMapper
 from dimos.msgs.geometry_msgs.PoseStamped import PoseStamped
@@ -98,13 +97,11 @@ rerun_config = {
 _with_vis = vis_module(viewer_backend=global_config.viewer, rerun_config=rerun_config)
 
 
-def _create_webcam() -> Webcam:
-    return Webcam(
-        camera_index=0,
-        fps=15,
-        stereo_slice="left",
-        camera_info=zed.CameraInfo.SingleWebcam,
-    )
+def _create_r1_camera() -> R1PC1Camera:
+    # The R1's own front camera, bridged from PC1 (the laptop can't read the R1's
+    # DDS directly — type mismatch). Streams ~22 fps JPEG over SSH and emits DimOS
+    # Image messages. Replaces the laptop webcam the G1 mirror used.
+    return R1PC1Camera(fps=15)
 
 
 _camera = (
@@ -118,7 +115,7 @@ _camera = (
                 frame_id="sensor",
                 child_frame_id="camera_link",
             ),
-            hardware=_create_webcam,
+            hardware=_create_r1_camera,
         ),
     )
     if not global_config.simulation
