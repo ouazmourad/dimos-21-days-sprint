@@ -21,7 +21,7 @@ from dimos.msgs.geometry_msgs.Twist import Twist
 from dimos.msgs.geometry_msgs.Vector3 import Vector3
 from dimos.robot.unitree.r1.effectors.high_level.loco_proxy import R1LocoProxy
 
-MOVE_DURATION = 1.5
+MOVE_DURATION = 2.5
 
 
 def main() -> int:
@@ -38,6 +38,13 @@ def main() -> int:
             return 0
 
         cmd = args[0]
+        if cmd in ("turn", "move") and proxy.get_state() != "811":
+            # Velocity is ignored unless the robot is in Start/locomotion mode.
+            print("[demo] entering Start mode (FSM 811) so the robot accepts velocity ...")
+            proxy.start_locomotion()
+            time.sleep(3.0)
+            print(f"[demo] FSM now {proxy.get_state()}")
+
         if cmd == "turn":
             yaw = float(args[1]) if len(args) > 1 else 0.3
             twist = Twist(linear=Vector3(0, 0, 0), angular=Vector3(0, 0, yaw))
