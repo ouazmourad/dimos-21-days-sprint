@@ -17,10 +17,9 @@
 
 from dimos.agents.mcp.mcp_client import McpClient
 from dimos.agents.mcp.mcp_server import McpServer
-from dimos.agents.skills.speak_skill import SpeakSkill
 from dimos.agents.web_human_input import WebInput
 from dimos.core.coordination.blueprints import autoconnect
-from dimos.robot.unitree.r1.skill_container import UnitreeR1SkillContainer
+from dimos.robot.unitree.r1.skill_container import R1SpeakSkill, UnitreeR1SkillContainer
 from dimos.robot.unitree.r1.system_prompt import R1_SYSTEM_PROMPT
 
 # NavigationSkillContainer is intentionally omitted: it hard-requires a
@@ -37,7 +36,9 @@ _agentic_skills = autoconnect(
     # which hangs at "thinking..." without an OPENAI_API_KEY.
     McpClient.blueprint(model="anthropic:claude-haiku-4-5", system_prompt=R1_SYSTEM_PROMPT),
     WebInput.blueprint(),
-    SpeakSkill.blueprint(),
+    # R1SpeakSkill (not the generic SpeakSkill): the robot speaks through its own
+    # onboard speaker via PC1, instead of rendering TTS on the laptop speakers.
+    R1SpeakSkill.blueprint(),
     UnitreeR1SkillContainer.blueprint(),
 )
 

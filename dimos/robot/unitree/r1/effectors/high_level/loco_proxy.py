@@ -38,11 +38,14 @@ from dimos.utils.logging_config import setup_logger
 
 logger = setup_logger()
 
-# Loco client on PC1 and the api ids it accepts via publish_request (matches the
-# R1's r1_loco_api.hpp: SET_FSM_ID=7101, SET_VELOCITY=7105).
+# Native PC1 clients and the api ids publish_request routes to them. Loco api ids
+# match the R1's r1_loco_api.hpp (SET_FSM_ID=7101, SET_VELOCITY=7105); the arm
+# execute-action api (7106, "arm" service) is handled by r1_arm_client.
 _CLIENT = "~/unitree_sdk2/build/bin/r1_loco_client"
+_ARM_CLIENT = "~/unitree_sdk2/build/bin/r1_arm_client"
 _API_SET_FSM_ID = 7101
 _API_SET_VELOCITY = 7105
+_API_ARM_EXECUTE = 7106
 
 
 class R1LocoProxy:
@@ -95,15 +98,15 @@ class R1LocoProxy:
         )
         logger.info(f"R1 current FSM state: {self.get_state()}")
 
-    def _run(self, flag: str, timeout: float = 30.0) -> str:
+    def _run(self, flag: str, timeout: float = 30.0, client: str = _CLIENT) -> str:
         assert self._client is not None, "R1LocoProxy not started"
-        cmd = f"{_CLIENT} --network_interface={self.interface} {flag}"
+        cmd = f"{client} --network_interface={self.interface} {flag}"
         logger.debug(f"PC1$ {cmd}")
         _stdin, stdout, stderr = self._client.exec_command(cmd, timeout=timeout)
         out = stdout.read().decode(errors="replace")
         err = stderr.read().decode(errors="replace")
         if err.strip():
-            logger.warning(f"r1_loco_client stderr: {err.strip()}")
+            logger.warning(f"{client.rsplit('/', 1)[-1]} stderr: {err.strip()}")
         return out
 
     def move(self, twist: Twist, duration: float = 0.0) -> bool:
@@ -157,6 +160,18 @@ class R1LocoProxy:
             d = param.get("duration", 1.0)
             self._run(f'--set_velocity="{v[0]} {v[1]} {v[2]} {d}"')
             return {"code": 0}
+        if api_id == _API_ARM_EXECUTE:
+            # Arm gesture by action id -> r1_arm_client (G1ArmActionClient).
+            action_id = int(param.get("data", 0))
+            out = self._run(f"--action={action_id}", client=_ARM_CLIENT)
+            code = 0
+            for line in out.splitlines():
+                if "ret:" in line:
+                    try:
+                        code = int(line.split("ret:")[-1].strip().split()[0])
+                    except ValueError:
+                        pass
+            return {"code": code}
         logger.warning(f"R1LocoProxy: unsupported api_id {api_id}")
         return {"code": -1, "error": "unsupported_api"}
 
