@@ -67,6 +67,10 @@ class Go2Mode(str, Enum):
 class ConnectionConfig(ModuleConfig):
     ip: str = Field(default_factory=lambda m: m["g"].robot_ip)
     mode: Go2Mode = Go2Mode.DEFAULT
+    # When True, only ingest the camera (video); never command the robot and
+    # never subscribe lidar/odom/cmd_vel. Lets an external controller (e.g. the
+    # Unitree phone app) stay the sole driver — no DimOS-initiated motion.
+    camera_only: bool = False
 
 
 class Go2ConnectionProtocol(Protocol):
@@ -241,16 +245,25 @@ class GO2Connection(Module, Camera, Pointcloud):
             self.color_image.publish(image)
             self._latest_video_frame = image
 
-        self.register_disposable(self.connection.lidar_stream().subscribe(self.lidar.publish))
-        self.register_disposable(self.connection.odom_stream().subscribe(self._publish_tf))
         self.register_disposable(self.connection.video_stream().subscribe(onimage))
-        self.register_disposable(Disposable(self.cmd_vel.subscribe(self.move)))
 
         self._camera_info_thread = Thread(
             target=self.publish_camera_info,
             daemon=True,
         )
         self._camera_info_thread.start()
+
+        if self.config.camera_only:
+            # Passive mode: only ingest the camera. Never command the robot and
+            # never subscribe lidar/odom/cmd_vel, so an external controller (the
+            # Unitree app) stays the sole driver — and there is no DimOS-initiated
+            # motion if you have no e-stop. Also avoids the lidar stream the Go2
+            # Air doesn't have.
+            return
+
+        self.register_disposable(self.connection.lidar_stream().subscribe(self.lidar.publish))
+        self.register_disposable(self.connection.odom_stream().subscribe(self._publish_tf))
+        self.register_disposable(Disposable(self.cmd_vel.subscribe(self.move)))
 
         self.standup()
         time.sleep(3)
@@ -265,7 +278,8 @@ class GO2Connection(Module, Camera, Pointcloud):
 
     @rpc
     def stop(self) -> None:
-        self.liedown()
+        if not self.config.camera_only:
+            self.liedown()
 
         if self.connection:
             self.connection.stop()

@@ -15,6 +15,7 @@
 import asyncio
 from dataclasses import dataclass
 import functools
+import os
 import threading
 import time
 from typing import Any, TypeAlias, TypeVar
@@ -98,7 +99,12 @@ class UnitreeWebRTCConnection(Resource):
         self.mode = mode
         self.stop_timer: threading.Timer | None = None
         self.cmd_vel_timeout = 0.2
-        self.conn = LegionConnection(WebRTCConnectionMethod.LocalSTA, ip=self.ip)
+        # data2=3 firmware (Go2 >= 1.1.15) requires a per-device AES-128 key for
+        # the LAN handshake; supply via GO2_AES_KEY (tools/fetch_go2_aes_key.py).
+        aes_128_key = os.environ.get("GO2_AES_KEY") or None
+        self.conn = LegionConnection(
+            WebRTCConnectionMethod.LocalSTA, ip=self.ip, aes_128_key=aes_128_key
+        )
         self.connect()
 
     def connect(self) -> None:
