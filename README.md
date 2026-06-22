@@ -1,329 +1,217 @@
-<div align="center">
+# Unitree R1 — the talking, promptable humanoid
 
-<img width="1000" alt="banner_bordered_trimmed" src="https://github.com/user-attachments/assets/64f13b39-da06-4f58-add0-cfc44f04db4e" />
+DimOS integration for the **Unitree R1 EDU**: a Claude-powered agent you chat with
+from your laptop that makes the robot **speak through its own onboard speaker**,
+**move and turn**, **perform arm gestures**, and **see through its front camera**.
 
-<h2>The Agentive Operating System for Physical Space</h2>
+This is the setup guide written from how this was actually built and run on a real
+R1 EDU, with the gotchas called out — because it is **not** plug-and-play, and
+knowing *why* will save you hours.
 
-[![Discord](https://img.shields.io/discord/1341146487186391173?style=flat-square&logo=discord&logoColor=white&label=Discord&color=5865F2)](https://discord.gg/dimos)
-[![Stars](https://img.shields.io/github/stars/dimensionalOS/dimos?style=flat-square)](https://github.com/dimensionalOS/dimos/stargazers)
-[![Forks](https://img.shields.io/github/forks/dimensionalOS/dimos?style=flat-square)](https://github.com/dimensionalOS/dimos/fork)
-[![Contributors](https://img.shields.io/github/contributors/dimensionalOS/dimos?style=flat-square)](https://github.com/dimensionalOS/dimos/graphs/contributors)
-![Nix](https://img.shields.io/badge/Nix-flakes-5277C3?style=flat-square&logo=NixOS&logoColor=white)
-![NixOS](https://img.shields.io/badge/NixOS-supported-5277C3?style=flat-square&logo=NixOS&logoColor=white)
-![CUDA](https://img.shields.io/badge/CUDA-supported-76B900?style=flat-square&logo=nvidia&logoColor=white)
-[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
+> **Base install is the upstream source of truth.** Everything *R1-specific* below
+> (the SSH-to-PC1 architecture, the IPs, `eth10`, the FSM modes, `paramiko`, the
+> blueprint names) is unique to this branch and won't be in the upstream docs. For
+> the canonical DimOS install, follow the repository's top-level `README.md`.
 
-<a href="https://trendshift.io/repositories/23169" target="_blank"><img src="https://trendshift.io/api/badge/repositories/23169" alt="dimensionalOS%2Fdimos | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+---
 
-<big><big>
+## 0. What you're actually building (read this first)
 
-[Hardware](#hardware) •
-[Installation](#installation) •
-[Agent CLI & MCP](#agent-cli-and-mcp) •
-[Blueprints](#blueprints) •
-[Development](#development)
+You run **DimOS** (the robot framework) on your **laptop**. The laptop is the
+"brain": it runs a Claude-powered agent you chat with, and sends commands to the
+robot.
 
-⚠️ **Pre-Release Beta** ⚠️
+The catch that shapes everything: the R1's Python SDK (`unitree_sdk2` pip, v1.0.3)
+has a **DDS type mismatch** that stops a laptop from driving the robot directly. So
+instead, DimOS **SSHes into the robot's own onboard computer (PC1, a Jetson)** and
+runs tiny native C++ helper programs *there* — those talk to the robot correctly
+over its internal network.
 
-</big></big>
+So:
 
-</div>
+- **Laptop = brain** (DimOS + Claude)
+- **PC1 = hands & mouth** (native clients)
 
-# Intro
+Speech, movement, arm gestures, and the camera all flow through that SSH bridge to
+PC1. This means you need the **EDU** version — it gives you SSH access to PC1. A
+non-EDU R1 won't work this way.
 
-Dimensional is the modern operating system for generalist robotics. We are setting the next-generation SDK standard, integrating with the majority of robot manufacturers.
-
-With a simple install and no ROS required, build physical applications entirely in python that run on any humanoid, quadruped, or drone.
-
-Dimensional is agent native -- "vibecode" your robots in natural language and build (local & hosted) multi-agent systems that work seamlessly with your hardware. Agents run as native modules — subscribing to any embedded stream, from perception (lidar, camera) and spatial memory down to control loops and motor drivers.
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <a href="docs/capabilities/navigation/native/index.md"><img src="assets/readme/navigation.gif" alt="Navigation" width="100%"></a>
-    </td>
-    <td align="center" width="50%">
-      <img src="assets/readme/perception.png" alt="Perception" width="100%">
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <h3><a href="docs/capabilities/navigation/native/index.md">Navigation and Mapping</a></h3>
-      SLAM, dynamic obstacle avoidance, route planning, and autonomous exploration — via both DimOS native and ROS<br><a href="https://x.com/stash_pomichter/status/2010471593806545367">Watch video</a>
-    </td>
-    <td align="center" width="50%">
-      <h3>Perception</h3>
-      Detectors, 3d projections, VLMs, Audio processing
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <a href="docs/capabilities/agents/readme.md"><img src="assets/readme/agentic_control.gif" alt="Agents" width="100%"></a>
-    </td>
-    <td align="center" width="50%">
-      <img src="assets/readme/spatial_memory.gif" alt="Spatial Memory" width="100%">
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <h3><a href="docs/capabilities/agents/readme.md">Agentive Control, MCP</a></h3>
-      "hey Robot, go find the kitchen"<br><a href="https://x.com/stash_pomichter/status/2015912688854200322">Watch video</a>
-    </td>
-    <td align="center" width="50%">
-      <h3>Spatial Memory</a></h3>
-      Spatio-temporal RAG, Dynamic memory, Object localization and permanence<br><a href="https://x.com/stash_pomichter/status/1980741077205414328">Watch video</a>
-    </td>
-  </tr>
-</table>
-
-
-# Hardware
-
-<table>
-  <tr>
-    <td align="center" width="20%">
-      <h3>Quadruped</h3>
-      <img width="245" height="1" src="assets/readme/spacer.png">
-    </td>
-    <td align="center" width="20%">
-      <h3>Humanoid</h3>
-      <img width="245" height="1" src="assets/readme/spacer.png">
-    </td>
-    <td align="center" width="20%">
-      <h3>Arm</h3>
-      <img width="245" height="1" src="assets/readme/spacer.png">
-    </td>
-    <td align="center" width="20%">
-      <h3>Drone</h3>
-      <img width="245" height="1" src="assets/readme/spacer.png">
-    </td>
-    <td align="center" width="20%">
-      <h3>Misc</h3>
-      <img width="245" height="1" src="assets/readme/spacer.png">
-    </td>
-  </tr>
-
-  <tr>
-    <td align="center" width="20%">
-      🟩 <a href="docs/platforms/quadruped/go2/index.md">Unitree Go2 pro/air</a><br>
-      🟥 <a href="dimos/robot/unitree/b1">Unitree B1</a><br>
-    </td>
-    <td align="center" width="20%">
-      🟨 <a href="docs/platforms/humanoid/g1/index.md">Unitree G1</a><br>
-    </td>
-    <td align="center" width="20%">
-      🟨 <a href="docs/capabilities/manipulation/readme.md">Xarm</a><br>
-      🟨 <a href="docs/capabilities/manipulation/readme.md">AgileX Piper</a><br>
-    </td>
-    <td align="center" width="20%">
-      🟧 <a href="dimos/robot/drone/README.md">MAVLink</a><br>
-      🟧 <a href="dimos/robot/drone/README.md">DJI Mavic</a><br>
-    </td>
-    <td align="center" width="20%">
-      🟥 <a href="https://github.com/dimensionalOS/openFT-sensor">Force Torque Sensor</a><br>
-    </td>
-  </tr>
-</table>
-<br>
-<div align="right">
-🟩 stable 🟨 beta 🟧 alpha 🟥 experimental
-
-</div>
-
-> [!IMPORTANT]
-> 🤖 Direct your favorite Agent (OpenClaw, Claude Code, etc.) to [AGENTS.md](AGENTS.md) and our [CLI and MCP](#agent-cli-and-mcp) interfaces to start building powerful Dimensional applications.
-
-# Installation
-
-## Interactive Install
-
-```sh skip
-curl -fsSL https://raw.githubusercontent.com/dimensionalOS/dimos/main/scripts/install.sh | bash
+```
+┌─────────────┐   chat / prompts    ┌──────────────────┐
+│   Laptop    │  ─────────────────► │   You (operator) │
+│             │                     └──────────────────┘
+│  DimOS      │   SSH (paramiko)        internal LAN
+│  + Claude   │  ───────────────►  ┌──────────────────────────────┐
+│  agent      │   runs native      │ R1 robot (192.168.123.x)     │
+└─────────────┘   helper clients   │  • PC1 Jetson  .164  (eth10) │
+                                    │  • Mainboard   .161          │
+                                    └──────────────────────────────┘
 ```
 
-> See [`scripts/install.sh --help`](scripts/install.sh) for non-interactive and advanced options.
+---
 
-## Manual System Install
+## 1. Network setup
 
-To set up your system dependencies, follow one of these guides:
+The R1 has two addresses on its internal LAN (`192.168.123.x`):
 
-- 🟩 [Ubuntu 22.04 / 24.04](docs/installation/ubuntu.md)
-- 🟩 [NixOS / General Linux](docs/installation/nix.md)
-- 🟧 [macOS](docs/installation/osx.md)
+| Component | Address |
+|---|---|
+| Mainboard / robot controller | `192.168.123.161` |
+| PC1 (onboard Jetson computer) | `192.168.123.164` |
 
-> Full system requirements, tested configs, and dependency tiers: [docs/requirements.md](docs/requirements.md)
+1. Power on the R1 and let it fully boot.
+2. Connect your laptop to the robot's network (ethernet to the robot, or its WiFi).
+   Your laptop should get a `192.168.123.x` address.
+3. **Verify you can reach PC1** — this is the make-or-break step:
+   ```bash
+   ssh unitree@192.168.123.164
+   # password: 123   (Unitree default on the isolated robot LAN)
+   ```
+   If this works, you're 80% of the way there. If it doesn't, nothing else will —
+   fix this first (check the ethernet link, confirm PC1 booted).
+4. From your SSH session, confirm PC1 can see the robot:
+   ```bash
+   ping 192.168.123.161
+   ```
 
-## Python Install
+---
 
-### Quickstart
+## 2. Prepare PC1 (the onboard Jetson)
+
+While SSHed into PC1, make sure the native SDK is present and built:
 
 ```bash
-uv venv --python "3.12"
+# On PC1:
+ls ~/unitree_sdk2/build/bin     # should exist
+
+# If unitree_sdk2 isn't built yet:
+cd ~/unitree_sdk2 && mkdir -p build && cd build && cmake .. && make -j
+```
+
+DimOS will **auto-build** the small helper clients (`r1_audio_client`, etc.) from
+embedded source on first run — but only if `~/unitree_sdk2` itself is present and
+compiled. The robot's internal network interface on PC1 is **`eth10`** (the helpers
+are invoked with `--network_interface=eth10`).
+
+---
+
+## 3. Laptop: clone the code & install DimOS
+
+```bash
+git clone https://github.com/ouazmourad/dimos-21-days-sprint.git
+cd dimos-21-days-sprint
+git checkout unitree-r1-integration
+
+# Set up DimOS per the repo's top-level README (Python 3.12 venv + install).
+# Typically:
+python3.12 -m venv .venv
 source .venv/bin/activate
-uv pip install 'dimos[base,unitree]'
+pip install -e .
 
-# Replay a recorded quadruped session (no hardware needed)
-# NOTE: First run will show a black rerun window while ~75 MB downloads from LFS
-dimos --replay run unitree-go2
+# R1-specific extra — the SSH bridge needs paramiko:
+pip install paramiko
 ```
+
+After install, the `dimos` CLI is available.
+
+---
+
+## 4. API key (the agent's brain)
+
+The agent uses Claude, so set your own key:
 
 ```bash
-# Install with simulation support
-uv pip install 'dimos[base,unitree,sim]'
-
-# Run quadruped in MuJoCo simulation
-dimos --simulation run unitree-go2
-
-# Run humanoid in simulation
-dimos --simulation run unitree-g1-sim
+export ANTHROPIC_API_KEY=sk-ant-...
 ```
+
+The R1 speaks with its **own onboard speaker** via the native audio client, so you
+do **not** need a separate TTS service for speech.
+
+---
+
+## 5. Put the robot in a safe state
+
+- Clear space around it; keep the e-stop within reach.
+- Bring it up to standing (damping → stand). The agent's `move` skill auto-enters
+  the robot's "Start" locomotion mode (**FSM 811**) before driving.
+- ⚠️ **Arm gestures only work when the robot is in the correct FSM mode** — if you
+  trigger one off-locomotion you'll see error **`7404`**. Stand it up first.
+
+---
+
+## 6. Run it
+
+Start with the **lean speech + chat** blueprint (no camera — simplest, matches
+"it talks and I prompt it"):
 
 ```bash
-# Control a real robot (Unitree quadruped over WebRTC)
-export ROBOT_IP=<YOUR_ROBOT_IP>
-dimos run unitree-go2
+dimos run unitree-r1-control
 ```
 
-# Featured Runfiles
+Once it's up, open the **chat UI at http://localhost:5555** and type prompts. Ask
+it to introduce itself or describe an action — it replies **and speaks through the
+robot's speaker**, and can move/turn/do arm gestures on command.
 
-| Run command | What it does |
-|-------------|-------------|
-| `dimos --replay run unitree-go2` | Quadruped navigation replay — SLAM, costmap, A* planning |
-| `dimos --replay --replay-db go2_bigoffice run unitree-go2-memory` | Quadruped temporal memory replay |
-| `dimos --simulation run unitree-go2-agentic` | Quadruped agentic + MCP server in simulation |
-| `dimos --simulation run unitree-g1-sim` | Humanoid in MuJoCo simulation |
-| `dimos --replay run drone-basic` | Drone video + telemetry replay |
-| `dimos --replay run drone-agentic` | Drone + LLM agent with flight skills (replay) |
-| `dimos run demo-camera` | Webcam demo — no hardware needed |
-| `dimos run keyboard-teleop-xarm7` | Keyboard teleop with mock xArm7 (requires `dimos[manipulation]` extra) |
-| `dimos --simulation run unitree-go2-agentic-ollama` | Quadruped agentic with local LLM (requires [Ollama](https://ollama.com) + `ollama serve`) |
-
-> Full blueprint docs: [docs/usage/blueprints.md](docs/usage/blueprints.md)
-
-# Agent CLI and MCP
-
-The `dimos` CLI manages the full lifecycle — run blueprints, inspect state, interact with agents, and call skills via MCP.
+When that works, graduate to the **full agentic** blueprint, which adds the robot's
+front camera (bridged through PC1) so it can see:
 
 ```bash
-dimos run unitree-go2-agentic --daemon   # Start in background
-dimos status                              # Check what's running
-dimos log -f                              # Follow logs
-dimos agent-send "explore the room"       # Send agent a command
-dimos mcp list-tools                      # List available MCP skills
-dimos mcp call relative_move --arg forward=0.5  # Call a skill directly
-dimos stop                                # Shut down
+dimos --rerun-open web run unitree-r1-agentic
 ```
 
-> Full CLI reference: [docs/usage/cli.md](docs/usage/cli.md)
+`--rerun-open web` serves the Rerun viewer in your browser; it **auto-opens at
+http://localhost:9878** (camera feed + 3D world view). Use the web viewer here, not
+the bundled native `dimos-viewer` binary — it's version-incompatible on this setup
+and never starts.
 
+---
 
-# Usage
+## Available blueprints
 
-## Use DimOS as a Library
+| Blueprint | What it is | Use it for |
+|---|---|---|
+| **`unitree-r1-control`** | Lean: R1 connection (PC1 backend) + Claude MCP agent + chat/voice + loco/arm skills. **No camera/viz.** Chat UI at `:5555`. | The first thing to run — "it talks, moves, and I prompt it." |
+| **`unitree-r1-agentic`** | Full stack: `unitree-r1-basic` + agentic skills, **adds the front camera** (via PC1), mapping, and the Rerun viewer (`:9878`). | When you want the robot to *see* as well as talk and move. |
+| `unitree-r1-basic` | `unitree-r1-primitive-no-nav` + `R1Connection`. Building block. | Composition only — not a direct run target. |
+| `unitree-r1-primitive-no-nav` | Minimal viz + camera + voxel/costmap/frontier modules; no connection of its own. Building block. | Composition only — not a direct run target. |
 
-See below a simple robot connection module that sends streams of continuous `cmd_vel` to the robot and receives `color_image` to a simple `Listener` module. DimOS Modules are subsystems on a robot that communicate with other modules using standardized messages.
+---
 
-```py skip
-import threading, time, numpy as np
-from dimos.core.coordination.blueprints import autoconnect
-from dimos.core.core import rpc
-from dimos.core.module import Module
-from dimos.core.stream import In, Out
-from dimos.msgs.geometry_msgs import Twist
-from dimos.msgs.sensor_msgs import Image, ImageFormat
+## 7. What works vs. what doesn't (honest status)
 
-class RobotConnection(Module):
-    cmd_vel: In[Twist]
-    color_image: Out[Image]
+| Capability | Status |
+|---|---|
+| Robot speaks from its **own speaker** | ✅ Works (confirmed) |
+| Chat-prompt the agent (Claude) | ✅ Works |
+| Move / turn on command | ✅ Works (auto-enters Start mode, FSM 811) |
+| Arm gestures | ✅ Works, but **FSM-gated** (stand up first, else err 7404) |
+| Front camera into DimOS | ✅ Works (via PC1 bridge, `unitree-r1-agentic`) |
+| **Dex3 hands** (e.g. "hold a box") | ❌ Not implemented yet |
+| Direct laptop→robot control (no SSH) | ❌ Blocked by the SDK type mismatch — that's why we proxy through PC1 |
 
-    @rpc
-    def start(self):
-        threading.Thread(target=self._image_loop, daemon=True).start()
+---
 
-    def _image_loop(self):
-        while True:
-            img = Image.from_numpy(
-                np.zeros((120, 160, 3), np.uint8),
-                format=ImageFormat.RGB,
-                frame_id="camera_optical",
-            )
-            self.color_image.publish(img)
-            time.sleep(0.2)
+## 8. Troubleshooting
 
-class Listener(Module):
-    color_image: In[Image]
+| Symptom | Fix |
+|---|---|
+| **SSH to PC1 fails** | Robot not fully booted, or the ethernet link is down. This blocks *everything* — fix first. |
+| **Robot doesn't speak** | Check the speaker volume (the audio client sets it, default 85; you can raise it). Confirm the `voice`/audio services are running on the robot. |
+| **Helper binary missing on PC1** | Confirm `~/unitree_sdk2` is built (Step 2); DimOS builds the small client from embedded source but needs the SDK there. |
+| **Arm command does nothing / error 7404** | Robot isn't in the locomotion FSM mode — stand it up. |
+| **Rerun viewer never opens / `--connect` error** | Use `--rerun-open web` (browser viewer at `:9878`); the native `dimos-viewer` binary is version-incompatible here. |
+| **IPs / interface differ on your unit** | The `192.168.123.161` / `.164` and `eth10` values are the defaults that worked for us — verify them against your own robot. |
 
-    @rpc
-    def start(self):
-        self.color_image.subscribe(lambda img: print(f"image {img.width}x{img.height}"))
+---
 
-if __name__ == "__main__":
-    autoconnect(
-        RobotConnection.blueprint(),
-        Listener.blueprint(),
-    ).build().loop()
-```
+## How the R1-specific pieces fit together
 
-## Blueprints
-
-Blueprints are instructions for how to construct and wire modules. We compose them with
-`autoconnect(...)`, which connects streams by `(name, type)` and returns a `Blueprint`.
-
-Blueprints can be composed, remapped, and have transports overridden if `autoconnect()` fails due to conflicting variable names or `In[]` and `Out[]` message types.
-
-A blueprint example that connects the image stream from a robot to an MCP-backed LLM agent for reasoning and action execution.
-```py skip
-from dimos.core.coordination.blueprints import autoconnect
-from dimos.core.transport import LCMTransport
-from dimos.msgs.sensor_msgs import Image
-from dimos.robot.unitree.go2.connection import go2_connection
-from dimos.agents.mcp.mcp_client import McpClient
-from dimos.agents.mcp.mcp_server import McpServer
-
-blueprint = autoconnect(
-    go2_connection(),
-    McpServer.blueprint(),
-    McpClient.blueprint(),
-).transports({("color_image", Image): LCMTransport("/color_image", Image)})
-
-# Run the blueprint
-if __name__ == "__main__":
-    blueprint.build().loop()
-```
-
-## Library API
-
-- [Modules](docs/usage/modules.md)
-- [LCM](docs/usage/lcm.md)
-- [Blueprints](docs/usage/blueprints.md)
-- [Transports](docs/usage/transports/index.md) — LCM, SHM, DDS, ROS 2
-- [Data Streams](docs/usage/data_streams/README.md)
-- [Configuration](docs/usage/configuration.md)
-- [Visualization](docs/usage/visualization.md)
-
-## Demos
-
-<img src="assets/readme/dimos_demo.gif" alt="DimOS Demo" width="100%">
-
-# Development
-
-## Develop on DimOS
-
-```sh skip
-export GIT_LFS_SKIP_SMUDGE=1
-git clone https://github.com/dimensionalOS/dimos.git
-cd dimos
-
-# Run the default test suite (uv run syncs deps on demand; --all-groups
-# only needed for self-hosted tests / mypy — see docs/development/testing.md)
-uv run pytest --numprocesses=auto dimos
-```
-
-
-## Multi Language Support
-
-Python is our glue and prototyping language, but we support many languages via LCM interop.
-
-Check our language interop examples:
-- [C++](examples/language-interop/cpp/)
-- [Lua](examples/language-interop/lua/)
-- [TypeScript](examples/language-interop/ts/)
+| File | Role |
+|---|---|
+| `connection.py`, `connection_spec.py` | `R1Connection` — the "pc1" SSH-proxy backend that drives the real robot. |
+| `effectors/high_level/dds_sdk.py`, `loco_proxy.py` | Loco FSM ids/api + arm api routing; `move()` auto-enters Start mode (FSM 811). |
+| `effectors/high_level/speak_proxy.py` | Onboard-speaker TTS via a PC1 `r1_audio_client` (auto-provisioned/built from embedded source). |
+| `sensors/pc1_camera.py` | `R1PC1Camera` — front camera bridged into DimOS through PC1 (throttled to 5 fps / 640×360). |
+| `skill_container.py`, `system_prompt.py` | R1 agent skills (incl. real arm-gesture table + speak skill) and prompt. |
+| `blueprints/` | The four blueprints in the table above. |
+| `tools/r1_*.py` (repo root) | Standalone scripts: `r1_control.py`, `r1_camera_view.py`, `r1_dimos_demo.py`, `r1_video_demo.py`. |
