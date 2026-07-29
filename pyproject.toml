@@ -153,6 +153,11 @@ Issues = "https://github.com/dimensionalOS/dimos/issues"
 Changelog = "https://github.com/dimensionalOS/dimos/releases"
 
 [project.optional-dependencies]
+gesture = [
+    # Hand-gesture control (dimos.robot.unitree.gesture). Imported lazily at
+    # skill-call time, so the rest of dimos runs without it installed.
+    "mediapipe",
+]
 misc = [
     # Core requirements
     "cerebras-cloud-sdk",
