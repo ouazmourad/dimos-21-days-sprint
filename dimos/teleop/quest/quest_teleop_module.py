@@ -74,6 +74,10 @@ class QuestTeleopConfig(ModuleConfig):
 
     control_loop_hz: float = 50.0
     server_port: int = 8443
+    # Bind on all interfaces: the Quest is a SEPARATE device on the LAN, so the
+    # default global listen_host (127.0.0.1) makes the teleop page unreachable from
+    # the headset. Override with -o <module>.server_host=127.0.0.1 to restrict.
+    server_host: str = "0.0.0.0"
 
 
 _Config = TypeVar("_Config", bound=QuestTeleopConfig)
@@ -117,7 +121,9 @@ class QuestTeleopModule(Module):
         self._stop_event = threading.Event()
 
         # Embedded web server — RobotWebInterface provides FastAPI app + run()/shutdown()
-        self._web_server = RobotWebInterface(port=self.config.server_port)
+        self._web_server = RobotWebInterface(
+            port=self.config.server_port, host=self.config.server_host
+        )
         self._web_server_thread: threading.Thread | None = None
 
         # Fingerprint-based message dispatch table
@@ -260,7 +266,10 @@ class QuestTeleopModule(Module):
             name="QuestTeleopWebServer",
         )
         self._web_server_thread.start()
-        logger.info(f"Quest teleop web server started on https://0.0.0.0:{self.config.server_port}")
+        logger.info(
+            "Quest teleop web server started on "
+            f"https://{self.config.server_host}:{self.config.server_port}/teleop"
+        )
 
     def _stop_server(self) -> None:
         """Shutdown the embedded web server."""

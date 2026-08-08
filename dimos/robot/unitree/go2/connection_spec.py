@@ -18,4 +18,9 @@ from dimos.spec.utils import Spec
 
 
 class GO2ConnectionSpec(Spec, Protocol):
+    # Keep this spec MINIMAL. publish_request is fire-and-forget (see
+    # UnitreeWebRTCConnection.publish_request), so the move skill re-sends Move
+    # through it at a steady rate without a separate non-blocking method. Adding a
+    # second method here previously perturbed ref resolution / @rpc routing for the
+    # whole connection, so only declare what's needed to match GO2Connection.
     def publish_request(self, topic: str, data: dict[str, Any]) -> dict[Any, Any]: ...

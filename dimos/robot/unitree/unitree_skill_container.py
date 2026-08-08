@@ -19,7 +19,7 @@ import difflib
 import math
 import time
 
-from unitree_webrtc_connect.constants import RTC_TOPIC
+from unitree_webrtc_connect.constants import RTC_TOPIC, SPORT_CMD
 
 from dimos.agents.annotation import skill
 from dimos.core.core import rpc
@@ -194,7 +194,10 @@ _UNITREE_COMMANDS = {
 class UnitreeSkillContainer(Module):
     """Container for Unitree Go2 robot skills using the new framework."""
 
-    _navigation: NavigationInterfaceSpec
+    # Optional: only `relative_move` uses it (nav-map path planning, which the Go2
+    # Air can't do anyway). Lightweight blueprints omit the navigation stack; the
+    # direct `move` skill works without it. Full blueprints still provide it.
+    _navigation: NavigationInterfaceSpec | None = None
     _connection: GO2ConnectionSpec
 
     @rpc
@@ -227,6 +230,13 @@ class UnitreeSkillContainer(Module):
             # Move 3 meters left, and face that direction
             relative_move(forward=0, left=3, degrees=90)
         """
+        if self._navigation is None:
+            return (
+                "relative_move needs the navigation stack, which isn't loaded in this "
+                "blueprint. Use move(forward=..., left=..., turn_degrees=...) for direct "
+                "movement instead."
+            )
+
         forward, left, degrees = float(forward), float(left), float(degrees)
 
         tf = self.tf.get("world", "base_link")
@@ -267,6 +277,133 @@ class UnitreeSkillContainer(Module):
         goal_orientation = Quaternion.from_euler(goal_euler)
 
         return PoseStamped(position=goal_position, orientation=goal_orientation)
+
+    @skill
+    def move(
+        self,
+        forward: float = 0.0,
+        left: float = 0.0,
+        turn_degrees: float = 0.0,
+        seconds: float = 1.5,
+    ) -> str:
+        """Move the robot directly — no map or path planning needed. Use this (NOT
+        relative_move) for simple movement, especially on a Go2 Air where navigation fails.
+
+        Both turns and straight forward/back moves are CLOSED-LOOP on odometry: a turn
+        watches the heading and stops at the exact angle (turn_degrees=90 -> ~90°), and a
+        forward/back move watches position and stops after ~(forward * seconds) meters.
+
+        Args:
+            forward: forward speed in m/s (negative = backward). ~0.3-0.6 is a gentle walk.
+            left: sideways speed in m/s (negative = right).
+            turn_degrees: degrees to turn in place (positive = left / counter-clockwise).
+                For a pure turn leave forward/left at 0; `seconds` is ignored (it turns
+                until the measured angle is reached).
+            seconds: how long a straight/strafing move lasts (the robot auto-stops after).
+
+        Examples:
+            move(forward=0.4, seconds=3)   # walk forward ~3 seconds
+            move(forward=-0.3, seconds=2)  # back up
+            move(turn_degrees=90)          # turn exactly ~90 degrees left in place
+            move(turn_degrees=-360)        # spin a full circle to the right
+        """
+        forward, left, turn_degrees = float(forward), float(left), float(turn_degrees)
+        seconds = min(max(0.1, float(seconds)), 20.0)
+        MAX_LIN, MAX_ANG = 0.6, 1.5  # m/s, rad/s
+        SEND_HZ = 10.0  # steady Move-command rate (publish_request is fire-and-forget)
+        dt = 1.0 / SEND_HZ
+        SPORT = RTC_TOPIC["SPORT_MOD"]
+        stop = {"api_id": SPORT_CMD["StopMove"]}
+
+        def _send_move(x: float, y: float, z: float) -> None:
+            # Sport Move velocity command (api_id 1008): x=fwd m/s, y=left m/s, z=yaw rad/s.
+            # publish_request is now FIRE-AND-FORGET (it no longer blocks on the robot's
+            # ack), so re-sending it at SEND_HZ keeps the velocity stream steady — a
+            # blocking send per loop iteration stalled the stream and the dog moved in
+            # start-stop bursts (a 360° spin crawling ~60° every few seconds; forward
+            # under-travelling). NOT the rt/wirelesscontroller joystick (its flood fails
+            # to move the Air and kills the data channel).
+            self._connection.publish_request(
+                SPORT, {"api_id": SPORT_CMD["Move"], "parameter": {"x": x, "y": y, "z": z}}
+            )
+
+        def _yaw() -> float | None:
+            tf = self.tf.get("world", "base_link")
+            return tf.to_pose().orientation.to_euler().yaw if tf is not None else None
+
+        def _xy() -> tuple[float, float] | None:
+            tf = self.tf.get("world", "base_link")
+            if tf is None:
+                return None
+            p = tf.to_pose().position
+            return (p.x, p.y)
+
+        try:
+            # A turn is CLOSED-LOOP: spin while watching the odometry heading and stop when
+            # the MEASURED angle hits the target. Open-loop velocity*time is hopelessly
+            # inaccurate on the Go2. Verified closed-loop: 90°->~91°.
+            if turn_degrees != 0.0 and forward == 0.0 and left == 0.0:
+                target = math.radians(turn_degrees)
+                speed = min(MAX_ANG, 1.2)  # rad/s spin rate
+                lead = math.radians(10.0) * speed  # stop early; scales with spin speed
+                z = math.copysign(speed, turn_degrees)
+                prev = _yaw()
+                if prev is None:
+                    return "Couldn't read the robot's heading (no odometry)."
+                acc = 0.0
+                # Generous cap: time to spin even at half the commanded rate, plus slack —
+                # so a full 360° completes instead of timing out partway.
+                deadline = time.monotonic() + abs(target) / (speed * 0.5) + 10.0
+                while abs(acc) < max(0.0, abs(target) - lead) and time.monotonic() < deadline:
+                    _send_move(0.0, 0.0, z)
+                    time.sleep(dt)
+                    cur = _yaw()
+                    if cur is not None:
+                        d = cur - prev
+                        while d > math.pi:
+                            d -= 2 * math.pi
+                        while d < -math.pi:
+                            d += 2 * math.pi
+                        acc += d
+                        prev = cur
+                self._connection.publish_request(SPORT, stop)
+                return f"Turned {math.degrees(acc):.0f}° (requested {turn_degrees:.0f}°)."
+
+            forward = max(-MAX_LIN, min(MAX_LIN, forward))
+            left = max(-MAX_LIN, min(MAX_LIN, left))
+
+            # Pure straight move (no strafe, no turn): CLOSED-LOOP on odometry DISTANCE so
+            # "~1 m" really travels ~1 m, independent of how well the Air realises the
+            # commanded velocity. Target distance = |forward| * seconds (the intent).
+            if forward != 0.0 and left == 0.0 and turn_degrees == 0.0:
+                target_d = abs(forward) * seconds
+                lead_d = 0.10  # stop ~10 cm early to cancel stop-latency creep
+                start = _xy()
+                if start is None:
+                    return "Couldn't read the robot's position (no odometry)."
+                x0, y0 = start
+                travelled = 0.0
+                deadline = time.monotonic() + target_d / max(0.1, abs(forward) * 0.5) + 8.0
+                while travelled < max(0.0, target_d - lead_d) and time.monotonic() < deadline:
+                    _send_move(forward, 0.0, 0.0)
+                    time.sleep(dt)
+                    cur = _xy()
+                    if cur is not None:
+                        travelled = math.hypot(cur[0] - x0, cur[1] - y0)
+                self._connection.publish_request(SPORT, stop)
+                return f"Moved {travelled:.2f} m forward (target {target_d:.2f} m)."
+
+            # Strafing / combined move: open-loop velocity for the requested duration.
+            wz = max(-MAX_ANG, min(MAX_ANG, math.radians(turn_degrees) / seconds))
+            end = time.monotonic() + seconds
+            while time.monotonic() < end:
+                _send_move(forward, left, wz)
+                time.sleep(dt)
+            self._connection.publish_request(SPORT, stop)
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"move failed: {e}")
+            return "Failed to send the movement command (the connection may be down)."
+        return f"Moved forward={forward} m/s, left={left} m/s over {seconds:.1f}s."
 
     @skill
     def wait(self, seconds: float) -> str:

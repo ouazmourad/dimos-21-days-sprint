@@ -1,4 +1,4 @@
-# Copyright 2026 Dimensional Inc.
+# Copyright 2025-2026 Dimensional Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Literal
+"""Hand-gesture control for the Go2 (ported from keaganchs/go2_gesture_recognition).
 
-VlModelName = Literal["qwen", "moondream", "openai"]
+`gesture_engine` holds the MediaPipe vision pipeline + gesture state machine (pure,
+no DimOS/robot deps). `gesture_skill_container` is the DimOS Module that wires that
+engine to DimOS's camera stream and sport connection.
+"""

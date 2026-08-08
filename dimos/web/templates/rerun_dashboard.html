@@ -31,13 +31,31 @@
     <div class="container">
         <iframe class="command-center" src="http://localhost:7779/command-center"></iframe>
         <div class="divider" role="separator" aria-label="Resize panels"></div>
-        <iframe class="rerun" src="http://localhost:9090/?url=rerun%2Bhttp%3A%2F%2Flocalhost%3A9876%2Fproxy"></iframe>
+        <!-- src is set in JS below: the viewer/proxy ports must match what DimOS
+             actually serves (RERUN_WEB_VIEWER_PORT=9878, gRPC proxy 9877). This used
+             to hardcode 9090/9876, which nothing listens on -> the panel showed
+             "localhost refused to connect". -->
+        <iframe class="rerun"></iframe>
     </div>
     <script>
         (function () {
             const container = document.querySelector('.container');
             const divider = document.querySelector('.divider');
             const commandCenter = document.querySelector('.command-center');
+
+            // Point the Rerun panel at the viewer DimOS actually serves, on the same
+            // host this dashboard was loaded from (so it works over the network too).
+            const RERUN_WEB_VIEWER_PORT = 9878;
+            const RERUN_GRPC_PROXY_PORT = 9877;
+            const rerunFrame = document.querySelector('.rerun');
+            if (rerunFrame) {
+                const host = window.location.hostname || 'localhost';
+                const proxy = encodeURIComponent(
+                    'rerun+http://' + host + ':' + RERUN_GRPC_PROXY_PORT + '/proxy'
+                );
+                rerunFrame.src =
+                    'http://' + host + ':' + RERUN_WEB_VIEWER_PORT + '/?url=' + proxy;
+            }
             const body = document.body;
             const minWidth = 0; // 16rem baseline for small screens
 

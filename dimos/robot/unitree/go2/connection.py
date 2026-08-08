@@ -17,6 +17,8 @@ from importlib import resources
 import sys
 from threading import Thread
 import time
+import math
+import numpy as np
 from typing import TYPE_CHECKING, Any, Protocol
 
 from pydantic import Field
@@ -113,6 +115,21 @@ BASE_TO_OPTICAL: Transform = Transform(
     frame_id="camera_link",
     child_frame_id="camera_optical",
 )
+
+
+# --- low-level collision guard -------------------------------------------------
+# Velocity commands (nav cmd_vel, exploration, patrol) reach the Go2 as raw sport
+# `Move` velocities, which the robot executes blindly: its own OBSTACLES_AVOID proved
+# unreliable on the Air, and the costmap planner can lag behind reality, so the dog
+# clipped furniture. This guard is the last line of defence — it measures the LiDAR
+# corridor straight ahead and zeroes the FORWARD component when something is too
+# close, while still allowing rotation and reversing so the planner can recover.
+_GUARD_STOP_DIST_M = 0.45  # veto forward motion closer than this
+_GUARD_CORRIDOR_HALF_W_M = 0.30
+_GUARD_LOOKAHEAD_M = 1.50
+_GUARD_MIN_H_M = 0.10  # ignore the floor (and small things like keys on it)
+_GUARD_MAX_H_M = 1.10  # ignore overheads the robot walks under
+_GUARD_MAX_CLOUD_AGE_S = 2.0  # stale lidar -> don't veto (fail open, but log)
 
 
 def make_connection(ip: str | None, cfg: GlobalConfig) -> Go2ConnectionProtocol:
@@ -229,6 +246,9 @@ class GO2Connection(Module, Camera, Pointcloud):
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
+        self._guard_cloud: PointCloud2 | None = None
+        self._guard_cloud_at: float = 0.0
+        self._guard_vetoes = 0
         self.connection = make_connection(self.config.ip, self.config.g)
 
         if hasattr(self.connection, "camera_info_static"):
@@ -261,7 +281,13 @@ class GO2Connection(Module, Camera, Pointcloud):
             # Air doesn't have.
             return
 
-        self.register_disposable(self.connection.lidar_stream().subscribe(self.lidar.publish))
+        def _on_lidar(cloud: PointCloud2) -> None:
+            # Keep the newest cloud for the collision guard, then pass it on.
+            self._guard_cloud = cloud
+            self._guard_cloud_at = time.monotonic()
+            self.lidar.publish(cloud)
+
+        self.register_disposable(self.connection.lidar_stream().subscribe(_on_lidar))
         self.register_disposable(self.connection.odom_stream().subscribe(self._publish_tf))
         self.register_disposable(Disposable(self.cmd_vel.subscribe(self.move)))
 
@@ -324,9 +350,65 @@ class GO2Connection(Module, Camera, Pointcloud):
             self.camera_info.publish(self.camera_info_static)
             time.sleep(1.0)
 
+    def _forward_clearance(self) -> float | None:
+        """Metres to the nearest obstacle in the corridor ahead, or None if unknown.
+
+        The LiDAR cloud is in the WORLD frame, so it is rotated into the robot frame
+        via world->base_link before filtering.
+        """
+        cloud = self._guard_cloud
+        if cloud is None or (time.monotonic() - self._guard_cloud_at) > _GUARD_MAX_CLOUD_AGE_S:
+            return None
+        try:
+            pts = cloud.points_f32()
+        except Exception:  # noqa: BLE001
+            return None
+        if pts is None or len(pts) == 0:
+            return None
+        tf = self.tf.get("world", "base_link")
+        if tf is None:
+            return None
+        pose = tf.to_pose()
+        yaw = pose.orientation.to_euler().yaw
+        dx = pts[:, 0] - pose.position.x
+        dy = pts[:, 1] - pose.position.y
+        c, sn = math.cos(yaw), math.sin(yaw)
+        fwd = dx * c + dy * sn
+        left = -dx * sn + dy * c
+        height = pts[:, 2] - (pose.position.z - 0.30)
+        mask = (
+            (fwd > 0.12)
+            & (fwd < _GUARD_LOOKAHEAD_M)
+            & (np.abs(left) < _GUARD_CORRIDOR_HALF_W_M)
+            & (height > _GUARD_MIN_H_M)
+            & (height < _GUARD_MAX_H_M)
+        )
+        if not bool(mask.any()):
+            return float(_GUARD_LOOKAHEAD_M)
+        return float(np.min(fwd[mask]))
+
     @rpc
     def move(self, twist: Twist, duration: float = 0.0) -> bool:
-        """Send movement command to robot."""
+        """Send a velocity command to the robot, vetoing forward motion into obstacles.
+
+        Every velocity consumer funnels through here (nav cmd_vel, exploration, patrol,
+        skills), so the LiDAR collision guard lives here rather than in one caller.
+        Rotation and reversing are always allowed so the planner can back out.
+        """
+        if twist.linear.x > 0.0:
+            d = self._forward_clearance()
+            if d is not None and d < _GUARD_STOP_DIST_M:
+                self._guard_vetoes += 1
+                if self._guard_vetoes % 10 == 1:
+                    logger.warning(
+                        f"Collision guard: obstacle {d:.2f} m ahead (< "
+                        f"{_GUARD_STOP_DIST_M} m) — forward motion vetoed "
+                        f"(turning/reversing still allowed). vetoes={self._guard_vetoes}"
+                    )
+                twist = Twist(
+                    linear=Vector3(0.0, twist.linear.y, twist.linear.z),
+                    angular=twist.angular,
+                )
         return self.connection.move(twist, duration)
 
     @rpc

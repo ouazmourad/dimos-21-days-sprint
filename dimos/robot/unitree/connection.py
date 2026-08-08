@@ -94,17 +94,36 @@ class SerializableVideoFrame:
 class UnitreeWebRTCConnection(Resource):
     _SPORT_API_ID_RAGEMODE: int = 2059
 
+    # --- auto-reconnect tuning ---
+    # The Go2 Air's single WebRTC data channel drops fairly often (idle timeouts,
+    # network blips, brief contention). A watchdog running in the connection's own
+    # event loop detects this and transparently rebuilds the channel.
+    _WATCHDOG_INTERVAL_S: float = 2.0  # how often the watchdog checks health
+    _DATA_TIMEOUT_S: float = 10.0  # no data on any subscribed stream this long => stale => reconnect
+    _RECONNECT_BACKOFF_S: float = 3.0  # wait before retrying a failed reconnect
+
     def __init__(self, ip: str, mode: str = "ai") -> None:
         self.ip = ip
         self.mode = mode
         self.stop_timer: threading.Timer | None = None
         self.cmd_vel_timeout = 0.2
+        # --- auto-reconnect state ---
+        # topic -> wrapped callback, re-applied to the new data channel on reconnect
+        self._active_subs: dict[str, Any] = {}
+        # monotonic time of the last message on ANY subscribed stream (freshness signal)
+        self._last_data_ts: float | None = None
+        self._stop_watchdog = False
         # data2=3 firmware (Go2 >= 1.1.15) requires a per-device AES-128 key for
         # the LAN handshake; supply via GO2_AES_KEY (tools/fetch_go2_aes_key.py).
         aes_128_key = os.environ.get("GO2_AES_KEY") or None
-        self.conn = LegionConnection(
-            WebRTCConnectionMethod.LocalSTA, ip=self.ip, aes_128_key=aes_128_key
+        # Connection method: LocalSTA (dog on your LAN, reached by ROBOT_IP — the
+        # default) or LocalAP (laptop joined the dog's OWN hotspot; the connector
+        # forces ip=192.168.12.1 and ignores ROBOT_IP). Override via env:
+        # GO2_WEBRTC_METHOD=LocalAP (e.g. in .env). AES key applies to both.
+        method = getattr(
+            WebRTCConnectionMethod, os.environ.get("GO2_WEBRTC_METHOD", "LocalSTA")
         )
+        self.conn = LegionConnection(method, ip=self.ip, aes_128_key=aes_128_key)
         self.connect()
 
     def connect(self) -> None:
@@ -115,19 +134,23 @@ class UnitreeWebRTCConnection(Resource):
 
         async def async_connect() -> None:
             await self.conn.connect()
-            await self.conn.datachannel.disableTrafficSaving(True)
-
-            self.conn.datachannel.set_decoder(decoder_type="native")
-
-            await self.conn.datachannel.pub_sub.publish_request_new(
-                RTC_TOPIC["MOTION_SWITCHER"], {"api_id": 1002, "parameter": {"name": self.mode}}
-            )
+            await self._post_connect_setup()
 
             self.connected_event.set()
             self.connection_ready.set()
 
-            while True:
-                await asyncio.sleep(1)
+            # Auto-reconnect watchdog: detect a dropped/stalled channel and rebuild
+            # it transparently (re-apply motion mode + re-subscribe active streams)
+            # so downstream consumers (camera/lidar/odom) never see the gap.
+            while not self._stop_watchdog:
+                await asyncio.sleep(self._WATCHDOG_INTERVAL_S)
+                if self._stop_watchdog:
+                    break
+                try:
+                    if self._should_reconnect():
+                        await self._do_reconnect()
+                except Exception as e:  # noqa: BLE001 — watchdog must never die
+                    print(f"Go2 auto-reconnect watchdog error: {e}")
 
         def start_background_loop() -> None:
             asyncio.set_event_loop(self.loop)
@@ -139,10 +162,56 @@ class UnitreeWebRTCConnection(Resource):
         self.thread.start()
         self.connection_ready.wait()
 
+    async def _post_connect_setup(self) -> None:
+        """(Re-)apply data-channel configuration after every (re)connect."""
+        await self.conn.datachannel.disableTrafficSaving(True)
+        self.conn.datachannel.set_decoder(decoder_type="native")
+        await self.conn.datachannel.pub_sub.publish_request_new(
+            RTC_TOPIC["MOTION_SWITCHER"], {"api_id": 1002, "parameter": {"name": self.mode}}
+        )
+        # Treat a fresh connect as fresh data so the freshness watchdog doesn't
+        # immediately fire before the first message arrives.
+        self._last_data_ts = time.monotonic()
+
+    def _should_reconnect(self) -> bool:
+        """True when the channel looks dead.
+
+        Two independent signals: the connector reports it's no longer connected
+        (peer state went to "closed"), OR — if any stream is subscribed — no data
+        has arrived for _DATA_TIMEOUT_S (catches silent stalls where the connector
+        still believes it is connected but odom/video have frozen).
+        """
+        if not getattr(self.conn, "isConnected", True):
+            return True
+        if self._active_subs and self._last_data_ts is not None:
+            if time.monotonic() - self._last_data_ts > self._DATA_TIMEOUT_S:
+                return True
+        return False
+
+    async def _do_reconnect(self) -> None:
+        """Rebuild the peer + data channel, re-apply config, re-subscribe streams."""
+        print("Go2 WebRTC channel lost — attempting auto-reconnect…")
+        try:
+            await self.conn.reconnect()
+            await self._post_connect_setup()
+            # Re-register every active subscription on the NEW data channel; the
+            # connector recreates self.datachannel (and its pub_sub) on reconnect,
+            # so the old registrations are gone.
+            for topic, cb in list(self._active_subs.items()):
+                self.conn.datachannel.pub_sub.subscribe(topic, cb)
+            self._last_data_ts = time.monotonic()
+            print(f"Go2 WebRTC auto-reconnect succeeded ({len(self._active_subs)} streams restored)")
+        except Exception as e:  # noqa: BLE001
+            print(f"Go2 WebRTC auto-reconnect failed: {e}; retrying shortly")
+            await asyncio.sleep(self._RECONNECT_BACKOFF_S)
+
     def start(self) -> None:
         pass
 
     def stop(self) -> None:
+        # Tell the auto-reconnect watchdog to exit so it doesn't fight the teardown.
+        self._stop_watchdog = True
+
         # Cancel timer
         if self.stop_timer:
             self.stop_timer.cancel()
@@ -182,45 +251,48 @@ class UnitreeWebRTCConnection(Resource):
         """
         x, y, yaw = twist.linear.x, twist.linear.y, twist.angular.z
 
-        # WebRTC coordinate mapping:
-        # x - Positive right, negative left
-        # y - positive forward, negative backwards
-        # yaw - Positive rotate right, negative rotate left
-        async def async_move() -> None:
-            self.conn.datachannel.pub_sub.publish_without_callback(
-                RTC_TOPIC["WIRELESS_CONTROLLER"],
-                data={"lx": -y, "ly": x, "rx": -yaw, "ry": 0},
+        # Drive with the SPORT `Move` command (api_id 1008), NOT the
+        # rt/wirelesscontroller joystick topic.
+        #
+        # The joystick path (previously used here) does NOT move a Go2 Air: verified
+        # against odometry, the robot barely translates, and flooding it also knocks
+        # over the WebRTC data channel. The visible symptom when the navigation stack
+        # drives through this method is a robot that twitches/rotates in place and
+        # never follows its planned path — A* plans fine, but the velocities never
+        # reach the legs. Sport Move is odometry-verified (0.3 m/s x 1.5 s -> 0.35 m;
+        # a commanded 360 deg spin measured 349 deg).
+        #
+        # Sport Move takes body-frame velocities directly: x forward m/s, y left m/s,
+        # z yaw rad/s — the same convention as Twist, so no sign flips.
+        def send_move() -> None:
+            self.publish_request(
+                RTC_TOPIC["SPORT_MOD"],
+                {"api_id": SPORT_CMD["Move"], "parameter": {"x": x, "y": y, "z": yaw}},
             )
-
-        async def async_move_duration() -> None:
-            """Send movement commands continuously for the specified duration."""
-            start_time = time.time()
-            sleep_time = 0.01
-
-            while time.time() - start_time < duration:
-                await async_move()
-                await asyncio.sleep(sleep_time)
 
         # Cancel existing timer and start a new one
         if self.stop_timer:
             self.stop_timer.cancel()
 
-        # Auto-stop after 0.5 seconds if no new commands
+        # Auto-stop shortly after the last command so a dropped cmd_vel stream doesn't
+        # leave the robot walking.
         self.stop_timer = threading.Timer(self.cmd_vel_timeout, self.stop_movement)
         self.stop_timer.daemon = True
         self.stop_timer.start()
 
         try:
             if duration > 0:
-                # Send continuous move commands for the duration
-                future = asyncio.run_coroutine_threadsafe(async_move_duration(), self.loop)
-                future.result()
-                # Stop after duration
+                # Re-send at ~10 Hz so the robot keeps walking for the whole duration
+                # (the sport controller expects a repeating velocity command). 10 Hz,
+                # not the old 100 Hz, which was enough to destabilise the channel.
+                end = time.monotonic() + duration
+                while time.monotonic() < end:
+                    send_move()
+                    time.sleep(0.1)
                 self.stop_movement()
             else:
-                # Single command for continuous movement
-                future = asyncio.run_coroutine_threadsafe(async_move(), self.loop)
-                future.result()
+                # One velocity update; the caller (e.g. nav cmd_vel) keeps streaming.
+                send_move()
             return True
         except Exception as e:
             print(f"Failed to send movement command: {e}")
@@ -229,14 +301,25 @@ class UnitreeWebRTCConnection(Resource):
     # Generic conversion of unitree subscription to Subject (used for all subs)
     def unitree_sub_stream(self, topic_name: str):  # type: ignore[no-untyped-def]
         def subscribe_in_thread(cb) -> None:  # type: ignore[no-untyped-def]
+            # Wrap the callback so every received message refreshes the freshness
+            # timestamp (drives the stall-detection watchdog) AND so we keep a
+            # handle to re-subscribe this exact callback after an auto-reconnect.
+            def wrapped(msg) -> None:  # type: ignore[no-untyped-def]
+                self._last_data_ts = time.monotonic()
+                cb(msg)
+
+            self._active_subs[topic_name] = wrapped
+
             # Run the subscription in the background thread that has the event loop
             def run_subscription() -> None:
-                self.conn.datachannel.pub_sub.subscribe(topic_name, cb)
+                self.conn.datachannel.pub_sub.subscribe(topic_name, wrapped)
 
             # Use call_soon_threadsafe to run in the background thread
             self.loop.call_soon_threadsafe(run_subscription)
 
         def unsubscribe_in_thread(cb) -> None:  # type: ignore[no-untyped-def]
+            self._active_subs.pop(topic_name, None)
+
             # Run the unsubscription in the background thread that has the event loop
             def run_unsubscription() -> None:
                 self.conn.datachannel.pub_sub.unsubscribe(topic_name)
@@ -251,10 +334,23 @@ class UnitreeWebRTCConnection(Resource):
 
     # Generic sync API call (we jump into the client thread)
     def publish_request(self, topic: str, data: dict[Any, Any]) -> Any:
+        """Send a sport REQUEST. FIRE-AND-FORGET: schedule it on the connection
+        loop but do NOT block on the robot's ack.
+
+        The connector's `publish()` does `return await future`, resolved only when
+        the robot replies to that request id. Awaiting it inside a high-rate
+        velocity loop stalls the command stream between sends, so the dog moves in
+        start-stop bursts (a 360° spin crawling ~60° every few seconds; forward
+        moves under-travelling). The command is still delivered — `channel.send`
+        runs inside the coroutine before that await — we just don't wait for the
+        reply. The ack future resolves/GCs on its own; we retrieve any error so
+        asyncio doesn't log it as unretrieved.
+        """
         future = asyncio.run_coroutine_threadsafe(
             self.conn.datachannel.pub_sub.publish_request_new(topic, data), self.loop
         )
-        return future.result()
+        future.add_done_callback(lambda f: f.cancelled() or f.exception())
+        return {"status": "sent"}
 
     @simple_mcache
     def raw_lidar_stream(self) -> Observable[RawLidarMsg]:
@@ -426,10 +522,21 @@ class UnitreeWebRTCConnection(Resource):
         return self.video_stream()
 
     def stop_movement(self) -> None:
-        """Cancel the auto-stop timer (used by move() for continuous commands)."""
+        """Stop the robot and cancel the auto-stop timer.
+
+        This previously only cancelled the timer, so a robot walking under a sport
+        `Move` velocity kept going when the command stream stopped. Now it also sends
+        StopMove, which is what actually halts the legs.
+        """
         if self.stop_timer:
             self.stop_timer.cancel()
             self.stop_timer = None
+        try:
+            self.publish_request(
+                RTC_TOPIC["SPORT_MOD"], {"api_id": SPORT_CMD["StopMove"]}
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
     def disconnect(self) -> None:
         """Disconnect from the robot and clean up resources."""
